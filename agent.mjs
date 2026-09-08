@@ -7,6 +7,7 @@ import { chat, chatStream } from "./llm.mjs";
 import { toOpenAITools, runTool } from "./tools.mjs";
 import { compactIfNeeded, estimateTokens } from "./context.mjs";
 import { skillsCatalog } from "./skills.mjs";
+import { loadHooks, resolveHooksFile, runHooks } from "./hooks.mjs";
 
 export const SYSTEM_PROMPT = `你是一个 coding agent，运行在用户的服务器上，通过工具完成编程与运维任务。
 
@@ -46,10 +47,21 @@ export async function runAgent({
     const systemContent = `${SYSTEM_PROMPT}\n\n## 可用技能\n${skillsCatalog()}\n\n需要某个技能的详细步骤时，调用 skill 工具加载它。`;
     msgs.unshift({ role: "system", content: systemContent });
   }
-  if (task) msgs.push({ role: "user", content: task });
+  // 生命周期钩子（Claude Code hooks 移植）
+  const { config: hookConfig, file: hookFile } = loadHooks(resolveHooksFile(cwd));
+  if (hookFile && Object.keys(hookConfig).length) {
+    onEvent({ type: "hooks_loaded", file: hookFile, events: Object.keys(hookConfig) });
+  }
+
+  if (task) {
+    const pre = runHooks(hookConfig, "UserPromptSubmit", { prompt: task, cwd }, { cwd });
+    const injected = pre.outputs.length ? `\n\n[UserPromptSubmit hook 注入]\n${pre.outputs.join("\n")}` : "";
+    msgs.push({ role: "user", content: task + injected });
+  }
 
   let steps = 0;
   let totalTokens = 0;
+  let stopBlocks = 0;
   while (steps < maxSteps) {
     steps += 1;
 
@@ -70,6 +82,18 @@ export async function runAgent({
 
     const calls = resp.tool_calls ?? [];
     if (calls.length === 0) {
+      // Stop hook：可阻止结束（要求继续），最多阻止 3 次防死循环
+      const stop = runHooks(hookConfig, "Stop", { cwd, steps, last_message: resp.content }, { cwd });
+      if (stop.blocked && stopBlocks < 3) {
+        stopBlocks += 1;
+        onEvent({ type: "stop_blocked", outputs: stop.outputs, count: stopBlocks });
+        msgs.push({ role: "assistant", content: resp.content ?? "" });
+        msgs.push({
+          role: "user",
+          content: `[Stop hook 要求继续] ${stop.outputs.join("；") || "请继续完成任务"}`,
+        });
+        continue;
+      }
       return { content: resp.content, messages: msgs, steps, totalTokens, done: true };
     }
 
@@ -83,7 +107,39 @@ export async function runAgent({
         args = {};
       }
       onEvent({ type: "tool", name: tc.function?.name, args });
-      const result = await runTool(tc.function?.name, args, { cwd, depth, model });
+
+      // PreToolUse hook：可阻止工具执行
+      const preHook = runHooks(
+        hookConfig,
+        "PreToolUse",
+        { tool_name: tc.function?.name, tool_input: args, cwd },
+        { cwd }
+      );
+      let result;
+      if (preHook.blocked) {
+        result = { isError: true, text: `⛔ 被 PreToolUse hook 阻止：${preHook.outputs.join("；") || "无原因"}` };
+      } else {
+        result = await runTool(tc.function?.name, args, { cwd, depth, model });
+        // PostToolUse hook：可附加反馈
+        const postHook = runHooks(
+          hookConfig,
+          "PostToolUse",
+          {
+            tool_name: tc.function?.name,
+            tool_input: args,
+            tool_result: result.text,
+            is_error: !!result.isError,
+            cwd,
+          },
+          { cwd }
+        );
+        if (postHook.outputs.length) {
+          result = { ...result, text: `${result.text}\n[PostToolUse hook] ${postHook.outputs.join("；")}` };
+        }
+        if (preHook.outputs.length) {
+          result = { ...result, text: `[PreToolUse hook] ${preHook.outputs.join("；")}\n${result.text}` };
+        }
+      }
       onEvent({ type: "tool_result", name: tc.function?.name, isError: !!result.isError, text: result.text });
       msgs.push({ role: "tool", tool_call_id: tc.id, content: result.text });
     }

@@ -15,6 +15,7 @@
 - **技能**：兼容 `SKILL.md` 约定，可列出/加载现有技能
 - **会话持久化**：JSON 落盘，支持 `--resume`
 - **多模型**：OpenAI 兼容端点，可接任意中转（默认 1MMC）
+- **生命周期钩子**：PreToolUse / PostToolUse / UserPromptSubmit / Stop（外部命令 + 退出码控制）
 - **流式输出**：`--stream` 实时打印模型回复
 - **飞书集成**：`lark_send` 工具可把结果推送到飞书
 
@@ -36,6 +37,29 @@ node cli.mjs --resume sa-20260909-061054 --task "继续上一步"
 # 列出会话
 node cli.mjs --list
 ```
+
+## Hooks（生命周期钩子）
+
+在项目 `.self-agent/hooks.json` 或 `~/.self-agent/hooks.json` 配置（`SELF_AGENT_HOOKS` 可覆盖路径）：
+
+```json
+{
+  "PreToolUse":  [{ "matcher": "bash", "command": "/path/to/check.sh" }],
+  "PostToolUse": [{ "matcher": "write_file", "command": "/path/to/audit.sh" }],
+  "UserPromptSubmit": [{ "command": "/path/to/enrich.sh" }],
+  "Stop": [{ "command": "/path/to/verify-done.sh" }]
+}
+```
+
+**契约**（与 Claude Code 一致）：
+
+| 行为 | 说明 |
+|---|---|
+| stdin | 收到 JSON payload（`tool_name` / `tool_input` / `tool_result` / `prompt` 等） |
+| 退出码 0 | 继续；stdout 作为附加信息注入上下文 |
+| 退出码 2 | 阻止（PreToolUse 阻止工具、Stop 阻止结束并继续） |
+| 其他退出码 | 记录为 hook 失败，不阻断 |
+| matcher | 正则匹配工具名；省略则匹配所有 |
 
 ## 配置
 
