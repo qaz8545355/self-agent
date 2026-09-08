@@ -1,0 +1,11 @@
+{
+  "PreToolUse": [
+    { "matcher": "write_file|edit_file", "command": "bash .self-agent/hooks/block-protected-paths.sh" }
+  ],
+  "PostToolUse": [
+    { "matcher": "bash|write_file|edit_file", "command": "bash .self-agent/hooks/audit-log.sh" }
+  ],
+  "Stop": [
+    { "command": "bash .self-agent/hooks/require-tests.sh" }
+  ]
+}
