@@ -1,0 +1,79 @@
+# 高危命令清单（execpolicy 轻量版 v1）
+# 用途：AI 执行命令前的自检红线 + 人工审计参考。
+# 沙箱层面由 permission.defaultPreset=workspace-write 硬拦截（非工作区写自动拒绝），
+# 本清单是行为层的第二道防线：命中即自检，默认不执行，先向用户说明后果并征得同意。
+
+rules:
+  # ── 毁灭性删除 ──
+  # 说明：精确匹配「危险目标」本身，避免误拦 rm -rf /tmp/xxx、/root/dsh/xxx 等正常工作路径；
+  #       复杂路径判定交给 /root/dsh/path-safety.mjs（代码级校验）。
+  - id: rm-root
+    pattern: "rm\\s+-[a-zA-Z]*r[a-zA-Z]*\\s+(/|/\\*)\\s*($|;|&|\\|)"
+    level: deny
+    reason: 递归删除根目录，不可恢复
+
+  - id: rm-system-dir
+    pattern: "rm\\s+-[a-zA-Z]*r[a-zA-Z]*\\s+/(root|etc|usr|var|home|bin|boot|lib|lib64|opt|srv|sys|proc|dev)\\s*($|;|&|\\|)"
+    level: deny
+    reason: 递归删除系统关键目录，不可恢复
+
+  # ── 权限变更 ──
+  - id: chmod-777
+    pattern: "chmod 777"
+    level: ask
+    reason: 开放所有权限，安全隐患
+  - id: chown-system
+    pattern: "chown (root|/etc|/usr)"
+    level: ask
+    reason: 变更系统文件属主
+
+  # ── 磁盘/分区 ──
+  - id: dd-disk
+    pattern: "dd .*(/dev/|of=)"
+    level: deny
+    reason: 直接写磁盘设备，可能覆盖分区
+  - id: mkfs
+    pattern: "mkfs"
+    level: deny
+    reason: 格式化文件系统，数据全毁
+
+  # ── 远程脚本执行 ──
+  - id: curl-pipe-sh
+    pattern: "curl .*\\| *(ba)?sh|wget .*\\| *(ba)?sh"
+    level: ask
+    reason: 执行远程脚本，来源不可控
+
+  # ── Git 危险操作 ──
+  - id: git-force-push
+    pattern: "git\\s+push\\s+[^|;&]*(--force|-f)(\\s|$)"
+    level: ask
+    reason: 强制推送会覆盖远端历史
+  - id: git-reset-hard
+    pattern: "git reset --hard"
+    level: ask
+    reason: 丢弃工作区/暂存区所有修改
+
+  # ── 服务与系统 ──
+  - id: systemctl-stop-core
+    pattern: "systemctl (stop|disable) (tdai-memory|dsh-web|lark-auto-reply)"
+    level: ask
+    reason: 停核心服务影响业务，需确认
+  - id: edit-etc
+    pattern: "(vim|nano|sed -i|echo .*>).*/(etc|boot)/"
+    level: ask
+    reason: 修改系统配置目录
+
+  # ── 数据删除 ──
+  - id: drop-db
+    pattern: "DROP (DATABASE|TABLE)|truncate"
+    level: deny
+    reason: 数据库结构级删除不可恢复
+
+# 通用自检规则（给 AI 的行为约束）
+behaviors:
+  - 执行任何命令前，先检查是否命中上述 pattern
+  - level=deny：一律不执行，向用户说明原因和替代方案
+  - level=ask：先向用户说明后果（影响范围、是否可逆），取得明确同意后执行
+  - 删除操作先确认路径：rm 前先 ls 确认；批量删除先 dry-run
+  - 涉及生产数据/配置的操作，先备份再动手
+  - 不确定的命令：不猜，先查文档或问用户
