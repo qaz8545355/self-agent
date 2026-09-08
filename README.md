@@ -21,8 +21,8 @@
 ## 快速开始
 
 ```bash
-# 依赖
-cd /root/dsh/self-agent && npm install
+git clone https://github.com/qaz8545355/self-agent.git
+cd self-agent && npm install
 
 # 单次任务
 node cli.mjs --task "读取 README.md 并总结" --cwd .
