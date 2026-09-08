@@ -8,7 +8,7 @@
 ## 特性
 
 - **工具契约**：每个工具声明 `name/description/parameters/isReadOnly/execute`
-- **11 个内置工具**：`bash`、`read_file`、`write_file`、`edit_file`、`glob`、`grep`、`subagent`、`skill`、`web_fetch`、`todo_write`、`lark_send`
+- **12 个内置工具**：`bash`、`read_file`、`write_file`、`edit_file`、`glob`、`grep`、`subagent`、`skill`、`web_fetch`、`todo_write`、`git`、`lark_send`
 - **安全层**：危险路径/命令拦截（`rm -rf /`、`chmod 777`、写系统目录等）、heredoc 剥离防误判
 - **上下文压缩**：token 估算 + 两层策略（L1 裁剪旧工具结果 / L2 整体摘要）
 - **子代理**：独立上下文、结果单点回传、递归防护
@@ -95,7 +95,7 @@ cli.mjs          入口（参数解析 / 输出）
 | 维度 | Claude Code | self-agent |
 |---|---|---|
 | 语言/运行时 | TypeScript + Bun + React Ink | 纯 Node ESM |
-| 工具数 | 41 | 11 |
+| 工具数 | 41 | 12 |
 | 上下文压缩 | 四层流水线 | 两层 |
 | UI | 终端 React | 文本流 |
 | 依赖 | 大量 | 仅 yaml |

@@ -297,6 +297,39 @@ export const toolDefs = [
     },
   },
   {
+    name: "git",
+    description:
+      "只读 git 操作：status / log / diff / branch / show / blame。写操作（commit/push/checkout 等）请用 bash 并遵守安全策略。",
+    parameters: {
+      type: "object",
+      properties: {
+        action: { type: "string", enum: ["status", "log", "diff", "branch", "show", "blame"] },
+        args: { type: "string", description: "附加参数（如文件名、-n 5）" },
+      },
+      required: ["action"],
+    },
+    isReadOnly: true,
+    async execute({ action, args }, ctx = {}) {
+      const allowed = new Set(["status", "log", "diff", "branch", "show", "blame"]);
+      if (!allowed.has(action)) return { isError: true, text: `不支持的 git 操作：${action}` };
+      const extra = String(args ?? "").trim();
+      if (/[;&|`$><]/.test(extra)) return { isError: true, text: "参数包含不允许的字符" };
+      const argv = ["git", action, ...(extra ? extra.split(/\s+/) : [])];
+      if (action === "log" && !extra) argv.push("-n", "20");
+      try {
+        const out = execFileSync(argv[0], argv.slice(1), {
+          cwd: ctx.cwd ?? process.cwd(),
+          encoding: "utf8",
+          timeout: 30_000,
+          maxBuffer: 4 * 1024 * 1024,
+        });
+        return { text: truncate(out || "(无输出)") };
+      } catch (e) {
+        return { isError: true, text: truncate(`git ${action} 失败：${e.stderr || e.message}`) };
+      }
+    },
+  },
+  {
     name: "lark_send",
     description:
       "通过飞书 bot 发送文本消息（默认发给用户私聊，可用 chat_id 指定群）。适合把长任务的结果推送给用户。",
