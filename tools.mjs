@@ -7,6 +7,7 @@
 import "./env.mjs";
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { checkCommand, checkWritePath } from "./safety.mjs";
 
@@ -327,6 +328,66 @@ export const toolDefs = [
       } catch (e) {
         return { isError: true, text: truncate(`git ${action} 失败：${e.stderr || e.message}`) };
       }
+    },
+  },
+  {
+    name: "memory",
+    description:
+      "读取长期记忆（画像/偏好/事件），返回带时效标注的内容——旧记忆会自动标注「可能已过时」，避免被过时信息误导。",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "可选：关键词过滤" },
+        limit: { type: "number", description: "最多返回条数（默认 8）" },
+      },
+    },
+    isReadOnly: true,
+    async execute({ query, limit = 8 }) {
+      const { annotateMemory } = await import("./memory-age.mjs");
+      const dir = process.env.SELF_AGENT_MEMORY_DIR ?? path.join(os.homedir(), ".memory-tencentdb", "memory-tdai");
+      if (!existsSync(dir)) return { text: "(未找到记忆目录)" };
+      const files = [];
+      const walkMem = (d) => {
+        let entries;
+        try {
+          entries = readdirSync(d, { withFileTypes: true });
+        } catch {
+          return;
+        }
+        for (const e of entries) {
+          const full = path.join(d, e.name);
+          // conversations/ 是原始对话流水（噪音大），不是提炼后的记忆
+          if (e.isDirectory()) {
+            if (e.name === "conversations" || e.name === "logs") continue;
+            walkMem(full);
+          } else if (/\.(md|jsonl)$/.test(e.name)) files.push(full);
+        }
+      };
+      walkMem(dir);
+
+      const items = [];
+      for (const f of files) {
+        try {
+          const st = statSync(f);
+          let content = readFileSync(f, "utf8").trim();
+          if (!content) continue;
+          if (content.length > 4000) content = content.slice(0, 4000) + "…";
+          if (query && !content.toLowerCase().includes(String(query).toLowerCase())) continue;
+          items.push({ file: path.relative(dir, f), content, mtimeMs: st.mtimeMs });
+        } catch {
+          /* 跳过不可读文件 */
+        }
+      }
+      items.sort((a, b) => {
+        const pa = a.file === "persona.md" ? 1 : 0;
+        const pb = b.file === "persona.md" ? 1 : 0;
+        return pb - pa || b.mtimeMs - a.mtimeMs;
+      });
+      const picked = items.slice(0, limit);
+      if (!picked.length) return { text: query ? `未找到与「${query}」相关的记忆` : "(无记忆)" };
+      return {
+        text: picked.map((it) => `【${it.file}】\n${annotateMemory(it.content, it.mtimeMs)}`).join("\n\n"),
+      };
     },
   },
   {

@@ -8,7 +8,7 @@
 ## 特性
 
 - **工具契约**：每个工具声明 `name/description/parameters/isReadOnly/execute`
-- **12 个内置工具**：`bash`、`read_file`、`write_file`、`edit_file`、`glob`、`grep`、`subagent`、`skill`、`web_fetch`、`todo_write`、`git`、`lark_send`
+- **13 个内置工具**：`bash`、`read_file`、`write_file`、`edit_file`、`glob`、`grep`、`subagent`、`skill`、`web_fetch`、`todo_write`、`git`、`memory`、`lark_send`
 - **安全层**：危险路径/命令拦截（`rm -rf /`、`chmod 777`、写系统目录等）、heredoc 剥离防误判
 - **上下文压缩**：token 估算 + 两层策略（L1 裁剪旧工具结果 / L2 整体摘要）
 - **子代理**：独立上下文、结果单点回传、递归防护
@@ -122,6 +122,20 @@ cli.mjs          入口（参数解析 / 输出）
 | 递归 | 子代理内禁止再派子代理 |
 | 终止 | 无工具调用 / 步数上限 / 压缩失败熔断 |
 
+## 记忆时效性
+
+移植 Claude Code \`memdir/memoryAge\` 的设计——源码注释指出：
+
+> "Models are poor at date arithmetic — a raw ISO timestamp doesn't trigger staleness reasoning the way **'47 days ago'** does."
+
+实现（\`memory-age.mjs\`）：
+
+- 记忆年龄渲染成中文（今天 / 昨天 / N 天前 / 约 N 个月前）
+- **超过 1 天的记忆自动附加「可能已过时」警告**
+- \`memory\` 工具读取长期记忆时自动标注；跳过原始对话流水，优先返回 \`persona.md\`
+
+实测效果：agent 读到 5 天前的画像后，**主动区分"记忆事实"与"需核对的现状"**，并列出待核对项。
+
 ## 实战验证
 
 带 bug 的小项目（`divide` 除零未处理、`average` 空数组返回 NaN）实测：
@@ -141,6 +155,7 @@ npm test          # 运行全部测试（tests/run-all.mjs）
 
 | 测试文件 | 用例 |
 |---|---:|
+| `memory-age.test.mjs` | 16 |
 | `safety.test.mjs` | 14 |
 | `context.test.mjs` | 12 |
 | `hooks.test.mjs` | 9 |
@@ -149,7 +164,7 @@ npm test          # 运行全部测试（tests/run-all.mjs）
 | `git.test.mjs` | 7 |
 | `skills.test.mjs` | 12（无技能目录时自动跳过） |
 | `subagent.test.mjs` | 4 |
-| **合计** | **74** |
+| **合计** | **90** |
 
 CI：GitHub Actions（push / PR 自动跑）。
 
@@ -158,7 +173,7 @@ CI：GitHub Actions（push / PR 自动跑）。
 | 维度 | Claude Code | self-agent |
 |---|---|---|
 | 语言/运行时 | TypeScript + Bun + React Ink | 纯 Node ESM |
-| 工具数 | 41 | 12 |
+| 工具数 | 41 | 13 |
 | 上下文压缩 | 四层流水线 | 两层 |
 | UI | 终端 React | 文本流 |
 | 依赖 | 大量 | 仅 yaml |
