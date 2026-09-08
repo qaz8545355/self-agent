@@ -56,10 +56,17 @@ node cli.mjs --list
 | 行为 | 说明 |
 |---|---|
 | stdin | 收到 JSON payload（`tool_name` / `tool_input` / `tool_result` / `prompt` 等） |
-| 退出码 0 | 继续；stdout 作为附加信息注入上下文 |
+| **JSON 输出（优先）** | stdout 为 JSON：`{"decision":"allow\|block\|deny","reason":"...","additionalContext":"..."}` |
+| 退出码 0 | 继续；stdout（非 JSON）作为附加信息注入上下文 |
 | 退出码 2 | 阻止（PreToolUse 阻止工具、Stop 阻止结束并继续） |
-| 其他退出码 | 记录为 hook 失败，不阻断 |
+| 其他退出码 | 记录为 hook 失败并写入日志，不阻断 |
 | matcher | 正则匹配工具名；省略则匹配所有 |
+
+**安全与可观测性**：
+
+- hook 命令本身会经过安全层校验（`rm -rf /` 之类的恶意 hook 会被拒绝执行）
+- 失败与拒绝写入 `~/.self-agent/hook-errors.log`（可用 `SELF_AGENT_HOOK_LOG` 覆盖）
+- 性能提示：hook 每次调用 fork 一次进程，高频只读工具建议用 `matcher` 精确限定，避免配置全局 PostToolUse
 
 ## 配置
 

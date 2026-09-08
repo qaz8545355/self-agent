@@ -16,12 +16,40 @@
  *   - 退出码 2：阻止（blocked）；stdout 作为阻止原因
  *   - 其他退出码：视为 hook 失败，记录但不阻断
  */
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, mkdirSync, appendFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
+import { checkCommand } from "./safety.mjs";
 
 export const HOOK_EVENTS = ["PreToolUse", "PostToolUse", "UserPromptSubmit", "Stop"];
+
+const ERROR_LOG = process.env.SELF_AGENT_HOOK_LOG ?? path.join(os.homedir(), ".self-agent", "hook-errors.log");
+
+function logError(msg) {
+  try {
+    mkdirSync(path.dirname(ERROR_LOG), { recursive: true });
+    appendFileSync(ERROR_LOG, `[${new Date().toISOString()}] ${msg}\n`);
+  } catch {
+    /* 日志失败不影响主流程 */
+  }
+}
+
+/**
+ * 解析 hook 的 JSON 输出（优先级高于退出码）。
+ * 支持：{ decision: "allow"|"block"|"deny", reason?, additionalContext? }
+ */
+export function parseHookOutput(stdout) {
+  const t = String(stdout ?? "").trim();
+  if (!t.startsWith("{")) return null;
+  try {
+    const j = JSON.parse(t);
+    if (j && typeof j === "object" && (j.decision || j.additionalContext || j.reason)) return j;
+  } catch {
+    /* 非 JSON 则退回退出码语义 */
+  }
+  return null;
+}
 
 /** 配置查找顺序：环境变量 → 项目 .self-agent/hooks.json → 用户目录 */
 export function resolveHooksFile(cwd = process.cwd()) {
@@ -67,6 +95,15 @@ export function runHooks(config, event, payload, { cwd = process.cwd(), timeout 
   let blocked = false;
 
   for (const h of hooks) {
+    // 安全层：hook 命令同样要过策略检查（防止 hooks.json 被写入危险命令）
+    const check = checkCommand(h.command);
+    if (!check.allow) {
+      const msg = `hook 被安全层拒绝（${check.reason}）：${h.command}`;
+      errors.push(msg);
+      logError(msg);
+      continue;
+    }
+
     let stdout = "";
     try {
       stdout = execFileSync("/bin/bash", ["-c", h.command], {
@@ -76,16 +113,44 @@ export function runHooks(config, event, payload, { cwd = process.cwd(), timeout 
         timeout,
         maxBuffer: 4 * 1024 * 1024,
       }).trim();
-      if (stdout) outputs.push(stdout);
     } catch (e) {
       stdout = String(e.stdout ?? "").trim();
-      if (e.status === 2) {
+      const status = e.status ?? "?";
+      // JSON 输出优先于退出码
+      const parsed = parseHookOutput(stdout);
+      if (parsed) {
+        if (parsed.decision === "block" || parsed.decision === "deny") {
+          blocked = true;
+          outputs.push(parsed.reason ?? `hook 阻止：${h.command}`);
+        }
+        if (parsed.additionalContext) outputs.push(String(parsed.additionalContext));
+        continue;
+      }
+      if (status === 2) {
         blocked = true;
         outputs.push(stdout || `hook 阻止：${h.command}`);
       } else {
-        errors.push(`hook 失败(${e.status ?? "?"}): ${h.command}${stdout ? ` → ${stdout}` : ""}`);
+        const msg = `hook 失败(${status}): ${h.command}${stdout ? ` → ${stdout}` : ""}`;
+        errors.push(msg);
+        logError(msg);
       }
+      continue;
     }
+
+    // 成功退出：优先解析 JSON 输出
+    const parsed = parseHookOutput(stdout);
+    if (parsed) {
+      if (parsed.decision === "block" || parsed.decision === "deny") {
+        blocked = true;
+        outputs.push(parsed.reason ?? `hook 阻止：${h.command}`);
+      }
+      if (parsed.additionalContext) outputs.push(String(parsed.additionalContext));
+      else if (parsed.decision === "allow" && !parsed.additionalContext && !parsed.reason) {
+        /* 显式放行，无注入 */
+      }
+      continue;
+    }
+    if (stdout) outputs.push(stdout);
   }
   return { blocked, outputs, errors, ran: hooks.length };
 }
