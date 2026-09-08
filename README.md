@@ -114,12 +114,23 @@ cli.mjs          入口（参数解析 / 输出）
 
 ## 测试
 
-| 模块 | 用例 | 结果 |
-|---|---|---|
-| 安全层 | 14 | ✅ 全通过 |
-| 上下文压缩 | 12 | ✅ 全通过 |
-| 子代理 | 4 | ✅ 全通过 |
-| 技能加载 | 12 | ✅ 全通过 |
+```bash
+npm test          # 运行全部测试（tests/run-all.mjs）
+```
+
+| 测试文件 | 用例 |
+|---|---:|
+| `safety.test.mjs` | 14 |
+| `context.test.mjs` | 12 |
+| `hooks.test.mjs` | 9 |
+| `hooks-enhanced.test.mjs` | 8 |
+| `tools.test.mjs` | 8 |
+| `git.test.mjs` | 7 |
+| `skills.test.mjs` | 12（无技能目录时自动跳过） |
+| `subagent.test.mjs` | 4 |
+| **合计** | **74** |
+
+CI：GitHub Actions（push / PR 自动跑）。
 
 ## 与 Claude Code 的差异
 
