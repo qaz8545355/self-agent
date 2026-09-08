@@ -122,6 +122,17 @@ cli.mjs          入口（参数解析 / 输出）
 | 递归 | 子代理内禁止再派子代理 |
 | 终止 | 无工具调用 / 步数上限 / 压缩失败熔断 |
 
+## 实战验证
+
+带 bug 的小项目（`divide` 除零未处理、`average` 空数组返回 NaN）实测：
+
+```bash
+node cli.mjs --task "运行 npm test，修复失败的测试。只允许修改 calculator.mjs" --cwd /path
+```
+
+结果：**5 步完成**（跑测试 → 定位 → 读代码 → edit_file 修复 → 复验），5/5 测试通过，
+且严格遵守约束——只改了 `calculator.mjs`，未触碰测试文件。
+
 ## 测试
 
 ```bash
