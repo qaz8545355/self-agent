@@ -68,6 +68,16 @@ node cli.mjs --list
 - 失败与拒绝写入 `~/.self-agent/hook-errors.log`（可用 `SELF_AGENT_HOOK_LOG` 覆盖）
 - 性能提示：hook 每次调用 fork 一次进程，高频只读工具建议用 `matcher` 精确限定，避免配置全局 PostToolUse
 
+## 示例
+
+`examples/` 提供可直接使用的 hooks 示例：
+
+- `block-protected-paths.sh` — 阻止写入 /etc、.env、production.yml
+- `audit-log.sh` — 工具调用审计日志
+- `require-tests.sh` — 没跑测试不许收工（质量门禁）
+
+复制到项目 `.self-agent/` 即可生效，详见 `examples/README.md`。
+
 ## 配置
 
 通过环境变量或项目根目录的 `.env.local`（不提交）配置：
