@@ -1,3 +1,4 @@
+import path from "node:path";
 import os from "node:os";
 const TMP = os.tmpdir();
 import { writeFileSync, mkdirSync, existsSync, readFileSync, rmSync } from "node:fs";
@@ -41,7 +42,7 @@ t("hook 失败被记录", r4.errors.some((e) => e.includes("hook 失败(3)")));
 // 错误日志（用环境变量指定路径后重跑一次）
 process.env.SELF_AGENT_HOOK_LOG = logFile;
 // 重新导入以生效（模块级常量已求值，这里直接验证原日志文件是否被写）
-const defaultLog = "/root/.self-agent/hook-errors.log";
+const defaultLog = path.join(os.homedir(), ".self-agent", "hook-errors.log");
 t("默认错误日志已写入", existsSync(defaultLog) && readFileSync(defaultLog, "utf8").includes("hook"), `→ ${defaultLog}`);
 
 console.log(`\n结果: ${pass} 通过 / ${fail} 失败`);

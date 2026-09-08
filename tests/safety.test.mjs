@@ -1,3 +1,4 @@
+import os from "node:os";
 import { checkCommand, checkWritePath } from "../safety.mjs";
 
 let pass = 0, fail = 0;
@@ -5,7 +6,7 @@ const t = (name, cond) => { cond ? (pass++, console.log(`✅ ${name}`)) : (fail+
 
 // 危险命令应拦截
 t("rm -rf / 拦截", !checkCommand("rm -rf /").allow);
-t("rm -rf /root/.ssh 拦截", !checkCommand("rm -rf /root/.ssh").allow);
+t("rm -rf ~/.ssh 拦截", !checkCommand(`rm -rf ${os.homedir()}/.ssh`).allow);
 t("git push -f 拦截", !checkCommand("git push -f origin main").allow);
 t("chmod 777 拦截", !checkCommand("chmod 777 /tmp/x").allow);
 t("mkfs 拦截", !checkCommand("mkfs.ext4 /dev/vda1").allow);

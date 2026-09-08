@@ -12,7 +12,7 @@ const st = await runTool("git", { action: "status" }, ctx);
 t("git status 正常", !st.isError, `→ ${String(st.text).slice(0, 60)}`);
 
 const lg = await runTool("git", { action: "log" }, ctx);
-t("git log 正常", !lg.isError && lg.text.includes("self-agent"), `→ ${String(lg.text).slice(0, 60)}`);
+t("git log 正常", !lg.isError && lg.text.includes("commit"), `→ ${String(lg.text).slice(0, 60)}`);
 
 const br = await runTool("git", { action: "branch" }, ctx);
 t("git branch 正常", !br.isError, `→ ${String(br.text).trim().slice(0, 40)}`);
