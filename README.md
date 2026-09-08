@@ -124,15 +124,15 @@ cli.mjs          入口（参数解析 / 输出）
 
 ## 记忆时效性
 
-移植 Claude Code \`memdir/memoryAge\` 的设计——源码注释指出：
+移植 Claude Code `memdir/memoryAge` 的设计——源码注释指出：
 
 > "Models are poor at date arithmetic — a raw ISO timestamp doesn't trigger staleness reasoning the way **'47 days ago'** does."
 
-实现（\`memory-age.mjs\`）：
+实现（`memory-age.mjs`）：
 
 - 记忆年龄渲染成中文（今天 / 昨天 / N 天前 / 约 N 个月前）
 - **超过 1 天的记忆自动附加「可能已过时」警告**
-- \`memory\` 工具读取长期记忆时自动标注；跳过原始对话流水，优先返回 \`persona.md\`
+- `memory` 工具读取长期记忆时自动标注；跳过原始对话流水，优先返回 `persona.md`
 
 实测效果：agent 读到 5 天前的画像后，**主动区分"记忆事实"与"需核对的现状"**，并列出待核对项。
 
