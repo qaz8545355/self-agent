@@ -1,0 +1,1 @@
+运行 node main.mjs 会报错。修复 import 路径让程序正常运行并输出 hello。只改必要的 import。

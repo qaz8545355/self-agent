@@ -19,6 +19,12 @@ function readKey(envName) {
   }
 }
 
+/** 合并调用方 signal 与默认超时（避免请求永久挂起） */
+function withTimeout(signal, ms = Number(process.env.SELF_AGENT_TIMEOUT_MS) || 180_000) {
+  const t = AbortSignal.timeout(ms);
+  return signal ? AbortSignal.any([signal, t]) : t;
+}
+
 export const DEFAULTS = {
   baseURL: process.env.SELF_AGENT_BASE_URL ?? "https://api.openai.com/v1",
   model: process.env.SELF_AGENT_MODEL ?? "gpt-4o-mini",
@@ -50,7 +56,7 @@ export async function chat({ messages, tools, model, baseURL, apiKey, temperatur
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
         body: JSON.stringify(body),
-        signal,
+        signal: withTimeout(signal),
       });
       const text = await res.text();
       let data;
@@ -115,7 +121,7 @@ export async function chatStream({
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
     body: JSON.stringify(body),
-    signal,
+    signal: withTimeout(signal),
   });
   if (!res.ok) {
     const t = await res.text();

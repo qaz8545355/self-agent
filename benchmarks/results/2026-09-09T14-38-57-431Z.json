@@ -1,0 +1,16 @@
+{
+  "at": "2026-09-09T14:38:57.432Z",
+  "passed": 1,
+  "total": 1,
+  "records": [
+    {
+      "case": "01-fix-divide",
+      "passed": true,
+      "detail": "测试全部通过",
+      "steps": 7,
+      "tokens": 45911,
+      "durationMs": 68957,
+      "error": null
+    }
+  ]
+}

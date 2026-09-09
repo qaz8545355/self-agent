@@ -1,0 +1,1 @@
+把项目中所有文件里的标识符 OLD_NAME 统一重命名为 NEW_NAME（包括 import 与使用处）。改完确认没有 OLD_NAME 残留。

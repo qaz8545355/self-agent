@@ -161,6 +161,17 @@ node cli.mjs --task "运行 npm test，修复失败的测试。只允许修改 c
 结果：**5 步完成**（跑测试 → 定位 → 读代码 → edit_file 修复 → 复验），5/5 测试通过，
 且严格遵守约束——只改了 `calculator.mjs`，未触碰测试文件。
 
+## 基准评测
+
+用真实任务衡量能力（不只是"功能没坏"）：
+
+```bash
+node benchmarks/run.mjs        # 8 个真实任务：修 bug / 实现 / 重构 / 写测试 / 写脚本
+```
+
+用例结构：`task.md` + `setup/` + `check.mjs`；结果含通过率、步数、token 消耗。
+详见 `benchmarks/README.md`。
+
 ## 测试
 
 ```bash

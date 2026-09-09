@@ -1,0 +1,1 @@
+给 math.mjs 写一个测试文件 math.test.mjs，覆盖 add 与 multiply 两个函数（含正常与边界情况），并运行测试确认通过。

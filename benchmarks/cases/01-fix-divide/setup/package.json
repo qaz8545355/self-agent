@@ -1,0 +1,7 @@
+{
+  "name": "c1",
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}

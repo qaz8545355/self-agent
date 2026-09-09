@@ -1,0 +1,1 @@
+report.mjs 里有两处重复的格式化逻辑。提取为 formatRow(name, value) 函数并复用它，保持输出不变。改完运行 node report.mjs 确认输出与之前一致。
