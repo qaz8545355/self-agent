@@ -765,6 +765,86 @@ export const toolDefs = [
     },
   },
   {
+    name: "sleep",
+    description: "等待指定秒数（用于轮询外部状态、避免忙等），上限 300 秒。",
+    parameters: {
+      type: "object",
+      properties: { seconds: { type: "number", description: "等待秒数" } },
+      required: ["seconds"],
+    },
+    isReadOnly: true,
+    async execute({ seconds }) {
+      const n = Math.min(Math.max(Number(seconds) || 1, 0.1), 300);
+      await new Promise((r) => setTimeout(r, n * 1000));
+      return { text: `已等待 ${n} 秒` };
+    },
+  },
+  {
+    name: "config",
+    description: "读写本地配置（~/.self-agent/config.json，可用 SELF_AGENT_CONFIG 覆盖路径）：get / set / list / delete。",
+    parameters: {
+      type: "object",
+      properties: {
+        action: { type: "string", enum: ["get", "set", "list", "delete"] },
+        key: { type: "string" },
+        value: { type: "string" },
+      },
+      required: ["action"],
+    },
+    isReadOnly: false,
+    async execute({ action, key, value }) {
+      const file = process.env.SELF_AGENT_CONFIG ?? path.join(os.homedir(), ".self-agent", "config.json");
+      let cfg = {};
+      try {
+        cfg = JSON.parse(readFileSync(file, "utf8"));
+      } catch {
+        cfg = {};
+      }
+      if (typeof cfg !== "object" || cfg === null) cfg = {};
+
+      if (action === "list") {
+        const keys = Object.keys(cfg);
+        return { text: keys.length ? keys.map((k) => `${k} = ${JSON.stringify(cfg[k])}`).join("\n") : "（空配置）" };
+      }
+      if (action === "get") {
+        if (!key) return { isError: true, text: "get 需要 key" };
+        return { text: `${key} = ${JSON.stringify(cfg[key])}` };
+      }
+      if (action === "set") {
+        if (!key) return { isError: true, text: "set 需要 key" };
+        cfg[key] = value;
+        mkdirSync(path.dirname(file), { recursive: true });
+        writeFileSync(file, JSON.stringify(cfg, null, 2), "utf8");
+        return { text: `已设置 ${key}` };
+      }
+      if (action === "delete") {
+        if (!key) return { isError: true, text: "delete 需要 key" };
+        delete cfg[key];
+        writeFileSync(file, JSON.stringify(cfg, null, 2), "utf8");
+        return { text: `已删除 ${key}` };
+      }
+      return { isError: true, text: `不支持的操作：${action}` };
+    },
+  },
+  {
+    name: "tool_search",
+    description: "按关键词搜索可用工具（匹配名称与描述），工具较多时用于发现能力。",
+    parameters: {
+      type: "object",
+      properties: { query: { type: "string", description: "搜索关键词" } },
+      required: ["query"],
+    },
+    isReadOnly: true,
+    async execute({ query }) {
+      const q = String(query ?? "").toLowerCase();
+      const hits = toolDefs.filter(
+        (t) => t.name.toLowerCase().includes(q) || t.description.toLowerCase().includes(q)
+      );
+      if (!hits.length) return { text: `未找到与「${query}」相关的工具` };
+      return { text: hits.map((t) => `- ${t.name}: ${t.description.slice(0, 90)}`).join("\n") };
+    },
+  },
+  {
     name: "lark_send",
     description:
       "通过飞书 bot 发送文本消息（默认发给用户私聊，可用 chat_id 指定群）。适合把长任务的结果推送给用户。",
