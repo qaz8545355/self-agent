@@ -42,6 +42,17 @@ function walk(dir, out = [], depth = 0) {
   return out;
 }
 
+
+/** 检查目录内是否有未提交改动（用于决定是否清理 worktree） */
+function worktreeHasChanges(dir) {
+  try {
+    const out = execFileSync("git", ["status", "--porcelain"], { cwd: dir, encoding: "utf8", timeout: 10_000 });
+    return out.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
 export const toolDefs = [
   {
     name: "bash",
@@ -183,28 +194,59 @@ export const toolDefs = [
         task: { type: "string", description: "自包含的子任务描述" },
         model: { type: "string", description: "可选：指定子代理使用的模型" },
         max_steps: { type: "number", description: "可选：子代理最大步数（默认 12）" },
+        isolation: {
+          type: "string",
+          enum: ["none", "worktree"],
+          description: "可选：worktree 表示在独立 git 工作副本中执行（有改动会保留并告知路径）",
+        },
       },
       required: ["task"],
     },
     isReadOnly: false,
-    async execute({ task, model, max_steps }, ctx = {}) {
+    async execute({ task, model, max_steps, isolation }, ctx = {}) {
       if ((ctx.depth ?? 0) > 0) {
         return { isError: true, text: "递归防护：子代理不能再启动子代理" };
       }
       const { runAgent } = await import("./agent.mjs");
+      let workDir = ctx.cwd;
+      let wt = null;
+
+      if (isolation === "worktree") {
+        const { createWorktree } = await import("./worktree.mjs");
+        wt = createWorktree(ctx.cwd, { name: "subagent" });
+        if (wt.created) workDir = wt.dir;
+      }
+
       try {
         const r = await runAgent({
           task,
-          cwd: ctx.cwd,
+          cwd: workDir,
           model: model ?? ctx.model,
-          maxSteps: max_steps ?? 12,
+          maxSteps: Math.max(12, Number(max_steps) || 20),
           depth: (ctx.depth ?? 0) + 1,
           onEvent: () => {},
         });
+
+        let suffix = "";
+        if (wt?.created) {
+          if (worktreeHasChanges(wt.dir)) {
+            suffix = `\n[隔离副本保留：${wt.dir}（有改动，请检查后合并或删除）]`;
+          } else {
+            const { removeWorktree } = await import("./worktree.mjs");
+            removeWorktree(wt);
+            suffix = "\n[隔离副本已清理（无改动）]";
+          }
+        } else if (wt?.error) {
+          suffix = `\n[${wt.error}]`;
+        }
         return {
-          text: `[子代理完成 steps=${r.steps} tokens≈${r.totalTokens} done=${r.done}]\n${r.content}`,
+          text: `[子代理完成 steps=${r.steps} tokens≈${r.totalTokens} done=${r.done}]${suffix}\n${r.content}`,
         };
       } catch (e) {
+        if (wt?.created) {
+          const { removeWorktree } = await import("./worktree.mjs");
+          removeWorktree(wt);
+        }
         return { isError: true, text: `子代理失败：${e.message}` };
       }
     },

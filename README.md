@@ -12,7 +12,7 @@
 - **15 个内置工具**：`bash`、`read_file`、`write_file`、`edit_file`、`glob`、`grep`、`subagent`、`skill`、`web_fetch`、`todo_write`、`git`、`memory`、`check_binary`、`apply_patch`、`lark_send`
 - **安全层**：危险路径/命令拦截（`rm -rf /`、`chmod 777`、写系统目录等）、heredoc 剥离防误判
 - **上下文压缩**：四层流水线（L1 清旧工具结果 → L2 折叠旧回复 → L3 整体摘要），逐层触发
-- **子代理**：独立上下文、结果单点回传、递归防护
+- **子代理**：独立上下文、结果单点回传、递归防护、**worktree 隔离**（`isolation: "worktree"`）
 - **技能**：兼容 `SKILL.md` 约定，可列出/加载现有技能
 - **会话持久化**：JSON 落盘，支持 `--resume`
 - **多模型**：OpenAI 兼容端点，可接任意中转（默认 1MMC）
@@ -184,7 +184,8 @@ npm test          # 运行全部测试（tests/run-all.mjs）
 | `parallel.test.mjs` | 16 |
 | `apply-patch.test.mjs` | 13 |
 | `collapse.test.mjs` | 13 |
-| **合计** | **181** |
+| `worktree.test.mjs` | 10 |
+| **合计** | **191** |
 
 CI：GitHub Actions（push / PR 自动跑）。
 
