@@ -634,6 +634,137 @@ export const toolDefs = [
     },
   },
   {
+    name: "ask_user",
+    description:
+      "需要用户做决策时提问（可给候选项）。非交互环境下会记录问题并提示停止等待，不要凭空替用户决定。",
+    parameters: {
+      type: "object",
+      properties: {
+        question: { type: "string", description: "要问用户的问题" },
+        options: { type: "array", items: { type: "string" }, description: "可选：候选项" },
+      },
+      required: ["question"],
+    },
+    isReadOnly: true,
+    async execute({ question, options }) {
+      const file = path.join(os.homedir(), ".self-agent", "pending-question.json");
+      try {
+        mkdirSync(path.dirname(file), { recursive: true });
+        writeFileSync(
+          file,
+          JSON.stringify({ question, options: options ?? [], askedAt: new Date().toISOString() }, null, 2),
+          "utf8"
+        );
+      } catch {
+        /* 记录失败不影响返回 */
+      }
+      const optText =
+        Array.isArray(options) && options.length
+          ? `\n选项：\n${options.map((o, i) => `${i + 1}. ${o}`).join("\n")}`
+          : "";
+      return { text: `❓ 需要用户确认：${question}${optText}\n（已记录到 ${file}；请停止并等待用户回答）` };
+    },
+  },
+  {
+    name: "plan_mode",
+    description: "计划模式：enter 后只做规划、不修改文件；exit 恢复执行。用于高风险改动前的方案评审。",
+    parameters: {
+      type: "object",
+      properties: {
+        action: { type: "string", enum: ["enter", "exit"] },
+        plan: { type: "string", description: "enter 时可附上计划要点" },
+      },
+      required: ["action"],
+    },
+    isReadOnly: true,
+    async execute({ action, plan }) {
+      if (action === "enter") {
+        return {
+          text: `📋 已进入计划模式：只输出方案与步骤，不要修改文件或执行破坏性命令。${
+            plan ? `\n\n计划：\n${plan}` : ""
+          }`,
+        };
+      }
+      return { text: "✅ 已退出计划模式：可以开始执行。" };
+    },
+  },
+  {
+    name: "http_request",
+    description: "通用 HTTP 请求（GET/POST/PUT/PATCH/DELETE），返回状态码与响应体（截断）。",
+    parameters: {
+      type: "object",
+      properties: {
+        method: { type: "string", enum: ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+        url: { type: "string" },
+        headers: { type: "object", description: "可选：附加请求头" },
+        body: { type: "string", description: "可选：请求体（字符串）" },
+        max_chars: { type: "number", description: "响应体最大字符数（默认 20000）" },
+      },
+      required: ["method", "url"],
+    },
+    isReadOnly: false,
+    async execute({ method, url, headers, body, max_chars = 20_000 }) {
+      try {
+        const res = await fetch(url, {
+          method,
+          headers: { "content-type": "application/json", ...(headers ?? {}) },
+          body: ["GET", "DELETE"].includes(method) ? undefined : body,
+          signal: AbortSignal.timeout(30_000),
+        });
+        const text = await res.text();
+        return { text: `HTTP ${res.status}\n${truncate(text, max_chars)}` };
+      } catch (e) {
+        return { isError: true, text: `请求失败：${e.message}` };
+      }
+    },
+  },
+  {
+    name: "schedule",
+    description:
+      "管理定时任务记录（add/list/remove），返回可直接安装的 crontab 行；不会直接修改系统 crontab（避免误伤）。",
+    parameters: {
+      type: "object",
+      properties: {
+        action: { type: "string", enum: ["add", "list", "remove"] },
+        name: { type: "string", description: "任务名（唯一）" },
+        cron: { type: "string", description: "cron 表达式，如 '0 9 * * *'" },
+        command: { type: "string", description: "要执行的命令" },
+      },
+      required: ["action"],
+    },
+    isReadOnly: false,
+    async execute({ action, name, cron, command }) {
+      const file = path.join(os.homedir(), ".self-agent", "schedules.json");
+      let list = [];
+      try {
+        list = JSON.parse(readFileSync(file, "utf8"));
+      } catch {
+        list = [];
+      }
+      if (!Array.isArray(list)) list = [];
+
+      if (action === "list") {
+        if (!list.length) return { text: "（无定时任务）" };
+        return { text: list.map((x) => `- ${x.name}: ${x.cron} → ${x.command}`).join("\n") };
+      }
+      if (action === "add") {
+        if (!name || !cron || !command) return { isError: true, text: "add 需要 name / cron / command" };
+        list = list.filter((x) => x.name !== name);
+        list.push({ name, cron, command, addedAt: new Date().toISOString() });
+        mkdirSync(path.dirname(file), { recursive: true });
+        writeFileSync(file, JSON.stringify(list, null, 2), "utf8");
+        return { text: `已记录定时任务「${name}」。安装到 crontab：\n${cron} ${command}` };
+      }
+      if (action === "remove") {
+        const before = list.length;
+        list = list.filter((x) => x.name !== name);
+        writeFileSync(file, JSON.stringify(list, null, 2), "utf8");
+        return { text: before === list.length ? `未找到任务「${name}」` : `已移除「${name}」` };
+      }
+      return { isError: true, text: `不支持的操作：${action}` };
+    },
+  },
+  {
     name: "lark_send",
     description:
       "通过飞书 bot 发送文本消息（默认发给用户私聊，可用 chat_id 指定群）。适合把长任务的结果推送给用户。",
