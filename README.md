@@ -166,11 +166,14 @@ node cli.mjs --task "运行 npm test，修复失败的测试。只允许修改 c
 用真实任务衡量能力（不只是"功能没坏"）：
 
 ```bash
-node benchmarks/run.mjs        # 8 个真实任务：修 bug / 实现 / 重构 / 写测试 / 写脚本
+node benchmarks/run.mjs        # 13 个真实任务：修 bug / 实现 / 重构 / 写测试 / 写脚本 / 约束遵守
 ```
 
 用例结构：`task.md` + `setup/` + `check.mjs`；结果含通过率、步数、token 消耗。
 详见 `benchmarks/README.md`。
+
+覆盖维度：bug 修复、功能实现、跨文件重构、写测试、脚本编写、**约束遵守**（不许改测试/数据）、
+**探索定位**（无提示的 bug）、**假绿检测**（命令成功但实际没干活）、**多文件接线**、**大文件检索**。
 
 ## 测试
 
@@ -203,7 +206,8 @@ npm test          # 运行全部测试（tests/run-all.mjs）
 | `notebook-task-team.test.mjs` | 17 |
 | `code-outline.test.mjs` | 12 |
 | `mcp.test.mjs` | 10 |
-| **合计** | **279** |
+| `tool-select.test.mjs` | 11 |
+| **合计** | **274** |
 
 CI：GitHub Actions（push / PR 自动跑）。
 
