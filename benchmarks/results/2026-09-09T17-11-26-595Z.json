@@ -1,0 +1,142 @@
+{
+  "at": "2026-09-09T17:11:26.595Z",
+  "passed": 15,
+  "total": 15,
+  "records": [
+    {
+      "case": "01-fix-divide",
+      "passed": true,
+      "detail": "测试通过且行为正确",
+      "steps": 6,
+      "tokens": 22718,
+      "durationMs": 25658,
+      "error": null
+    },
+    {
+      "case": "02-fix-average",
+      "passed": true,
+      "detail": "测试通过且行为正确",
+      "steps": 6,
+      "tokens": 22215,
+      "durationMs": 30326,
+      "error": null
+    },
+    {
+      "case": "03-add-slugify",
+      "passed": true,
+      "detail": "测试通过且行为正确",
+      "steps": 6,
+      "tokens": 24094,
+      "durationMs": 27370,
+      "error": null
+    },
+    {
+      "case": "04-rename-symbol",
+      "passed": true,
+      "detail": "OLD_NAME 残留 0 个文件，NEW_NAME 出现于 3 个文件",
+      "steps": 6,
+      "tokens": 23612,
+      "durationMs": 63114,
+      "error": null
+    },
+    {
+      "case": "05-add-test",
+      "passed": true,
+      "detail": "测试有效：6 个用例 / 33 个断言，且能发现实现错误",
+      "steps": 9,
+      "tokens": 34441,
+      "durationMs": 63588,
+      "error": null
+    },
+    {
+      "case": "06-fix-import",
+      "passed": true,
+      "detail": "import 修复正确，且确实调用了 helper.greet",
+      "steps": 8,
+      "tokens": 30713,
+      "durationMs": 121092,
+      "error": null
+    },
+    {
+      "case": "07-refactor-dup",
+      "passed": true,
+      "detail": "formatRow 已提取复用，输出正确且换数据仍正确",
+      "steps": 8,
+      "tokens": 30515,
+      "durationMs": 35522,
+      "error": null
+    },
+    {
+      "case": "08-write-script",
+      "passed": true,
+      "detail": "统计随文件变化：3 → 6",
+      "steps": 3,
+      "tokens": 10276,
+      "durationMs": 108229,
+      "error": null
+    },
+    {
+      "case": "09-constraint-scope",
+      "passed": true,
+      "detail": "测试通过且未越界修改",
+      "steps": 7,
+      "tokens": 26813,
+      "durationMs": 29507,
+      "error": null
+    },
+    {
+      "case": "10-hunt-bug",
+      "passed": true,
+      "detail": "输出正确，且换一组数据仍正确（非硬编码）",
+      "steps": 8,
+      "tokens": 31433,
+      "durationMs": 156045,
+      "error": null
+    },
+    {
+      "case": "11-broken-env",
+      "passed": true,
+      "detail": "npm test 真跑并通过 4 个用例（脚本非伪造）",
+      "steps": 7,
+      "tokens": 27939,
+      "durationMs": 34865,
+      "error": null
+    },
+    {
+      "case": "12-multi-file-feature",
+      "passed": true,
+      "detail": "输出正确，且换输入仍正确（非硬编码）",
+      "steps": 5,
+      "tokens": 17784,
+      "durationMs": 62762,
+      "error": null
+    },
+    {
+      "case": "13-big-file",
+      "passed": true,
+      "detail": "输出正确，且换一份数据仍正确（非硬编码）",
+      "steps": 7,
+      "tokens": 29438,
+      "durationMs": 141429,
+      "error": null
+    },
+    {
+      "case": "14-spec-cli",
+      "passed": true,
+      "detail": "6 个场景全部符合规格",
+      "steps": 6,
+      "tokens": 23737,
+      "durationMs": 98378,
+      "error": null
+    },
+    {
+      "case": "15-perf-pair",
+      "passed": true,
+      "detail": "自带测试通过，且换输入仍正确、性能达标（非硬编码）",
+      "steps": 9,
+      "tokens": 51191,
+      "durationMs": 131288,
+      "error": null
+    }
+  ]
+}

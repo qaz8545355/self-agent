@@ -170,6 +170,7 @@ node benchmarks/run.mjs        # 15 个真实任务：修 bug / 实现 / 重构 
 ```
 
 用例结构：`task.md` + `setup/` + `check.mjs`；结果含通过率、步数、token 消耗。
+用例自检（防止 check 本身被硬编码绕过）：`node benchmarks/selfcheck.mjs`。
 详见 `benchmarks/README.md`。
 
 覆盖维度：bug 修复、功能实现、跨文件重构、写测试、脚本编写、**约束遵守**（不许改测试/数据）、
