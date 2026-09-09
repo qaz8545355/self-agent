@@ -1,0 +1,7 @@
+{
+  "name": "c15-perf",
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}
