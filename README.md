@@ -124,7 +124,7 @@ cli.mjs          入口（参数解析 / 输出）
 
 ## 错误分类与重试
 
-移植 Claude Code \`services/api/errors.ts\` 的设计（\`errors.mjs\`）：
+移植 Claude Code `services/api/errors.ts` 的设计（`errors.mjs`）：
 
 | 错误类型 | 处理 |
 |---|---|
@@ -132,7 +132,7 @@ cli.mjs          入口（参数解析 / 输出）
 | 限流 / 过载 / 网络 | 指数退避自动重试（最多 2 次） |
 | 密钥无效 / 余额不足 | 直接失败，不浪费时间重试 |
 
-配合 \`check_binary\` 工具（依赖检测 + 缓存），解决"假设外部命令存在"的问题。
+配合 `check_binary` 工具（依赖检测 + 缓存），解决"假设外部命令存在"的问题。
 
 ## 记忆时效性
 
