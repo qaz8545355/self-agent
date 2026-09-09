@@ -412,6 +412,84 @@ export const toolDefs = [
     },
   },
   {
+    name: "apply_patch",
+    description:
+      "批量编辑多个文件（原子操作）：先全部校验（路径安全 + old_string 唯一），再统一写入；任一失败则全部回滚，不留半成品。适合跨文件重构。",
+    parameters: {
+      type: "object",
+      properties: {
+        edits: {
+          type: "array",
+          description: "编辑列表；每项替换一个文件中的一段文本（同一文件可多项，按顺序应用）",
+          items: {
+            type: "object",
+            properties: {
+              path: { type: "string" },
+              old_string: { type: "string" },
+              new_string: { type: "string" },
+            },
+            required: ["path", "old_string", "new_string"],
+          },
+        },
+      },
+      required: ["edits"],
+    },
+    isReadOnly: false,
+    async execute({ edits }, ctx = {}) {
+      if (!Array.isArray(edits) || edits.length === 0) {
+        return { isError: true, text: "edits 必须是非空数组" };
+      }
+      const cwd = ctx.cwd ?? process.cwd();
+      const staged = [];
+
+      // 1) 全量校验 + 计算（不落盘）
+      for (const [i, e] of edits.entries()) {
+        if (!e || typeof e.path !== "string" || typeof e.old_string !== "string" || typeof e.new_string !== "string") {
+          return { isError: true, text: `第 ${i + 1} 项格式错误（需要 path/old_string/new_string）` };
+        }
+        const full = path.resolve(cwd, e.path);
+        const safe = checkWritePath(full);
+        if (!safe.allow) return { isError: true, text: `第 ${i + 1} 项被安全层拒绝：${safe.reason}` };
+
+        let entry = staged.find((x) => x.full === full);
+        if (!entry) {
+          if (!existsSync(full)) return { isError: true, text: `第 ${i + 1} 项文件不存在：${e.path}` };
+          const original = readFileSync(full, "utf8");
+          entry = { full, original, updated: original };
+          staged.push(entry);
+        }
+        const count = entry.updated.split(e.old_string).length - 1;
+        if (count === 0) return { isError: true, text: `第 ${i + 1} 项 old_string 未找到（${e.path}）` };
+        if (count > 1) return { isError: true, text: `第 ${i + 1} 项 old_string 出现 ${count} 次，不唯一（${e.path}）` };
+        entry.updated = entry.updated.replace(e.old_string, e.new_string);
+      }
+
+      // 2) 原子写入；任一失败则回滚已写文件
+      const written = [];
+      try {
+        for (const x of staged) {
+          writeFileSync(x.full, x.updated, "utf8");
+          written.push(x);
+        }
+      } catch (err) {
+        for (const x of written) {
+          try {
+            writeFileSync(x.full, x.original, "utf8");
+          } catch {
+            /* 回滚失败也只能继续 */
+          }
+        }
+        return { isError: true, text: `写入失败，已回滚 ${written.length} 个文件：${err.message}` };
+      }
+
+      return {
+        text: `已原子应用 ${edits.length} 处编辑，涉及 ${staged.length} 个文件：\n${staged
+          .map((x) => `- ${path.relative(cwd, x.full)}`)
+          .join("\n")}`,
+      };
+    },
+  },
+  {
     name: "lark_send",
     description:
       "通过飞书 bot 发送文本消息（默认发给用户私聊，可用 chat_id 指定群）。适合把长任务的结果推送给用户。",

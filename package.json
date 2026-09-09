@@ -1,6 +1,6 @@
 {
   "name": "self-agent",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "自研轻量 coding agent：单循环状态机 + 契约式工具 + 分层安全 + 上下文压缩 + 子代理 + 技能加载",
   "type": "module",
   "bin": {
