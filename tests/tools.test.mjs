@@ -9,7 +9,8 @@ t("web_fetch 已注册", names.includes("web_fetch"));
 t("todo_write 已注册", names.includes("todo_write"));
 
 // web_fetch
-const wf = await runTool("web_fetch", { url: "https://example.com" }, {});
+let wf = await runTool("web_fetch", { url: "https://example.com" }, {});
+if (wf.isError) wf = await runTool("web_fetch", { url: "https://example.com" }, {}); // 网络波动重试一次
 t("web_fetch 抓取成功", !wf.isError && wf.text.includes("Example Domain"), `→ ${String(wf.text).slice(0, 80)}`);
 const wfBad = await runTool("web_fetch", { url: "https://nonexistent-domain-xyz-12345.invalid" }, {});
 t("web_fetch 失败返回错误", wfBad.isError);
