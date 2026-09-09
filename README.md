@@ -9,7 +9,7 @@
 
 - **工具契约**：每个工具声明 `name/description/parameters/isReadOnly/execute`
 - **并发执行**：连续的只读工具并行、写工具串行（借鉴 Claude Code `toolOrchestration`），实测 3 倍提速
-- **29 个内置工具**：`bash`、`read_file`、`write_file`、`edit_file`、`glob`、`grep`、`subagent`、`skill`、`web_fetch`、`todo_write`、`git`、`memory`、`check_binary`、`apply_patch`、`run_tests`、`env_info`、`diff`、`ask_user`、`plan_mode`、`http_request`、`schedule`、`sleep`、`config`、`tool_search`、`notebook_edit`、`task`、`team`、`code_outline`、`lark_send`
+- **30 个内置工具**：`bash`、`read_file`、`write_file`、`edit_file`、`glob`、`grep`、`subagent`、`skill`、`web_fetch`、`todo_write`、`git`、`memory`、`check_binary`、`apply_patch`、`run_tests`、`env_info`、`diff`、`ask_user`、`plan_mode`、`http_request`、`schedule`、`sleep`、`config`、`tool_search`、`notebook_edit`、`task`、`team`、`code_outline`、`mcp`、`lark_send`
 - **安全层**：危险路径/命令拦截（`rm -rf /`、`chmod 777`、写系统目录等）、heredoc 剥离防误判
 - **上下文压缩**：四层流水线（L1 清旧工具结果 → L2 折叠旧回复 → L3 整体摘要），逐层触发
 - **子代理**：独立上下文、结果单点回传、递归防护、**worktree 隔离**（`isolation: "worktree"`）
@@ -191,7 +191,8 @@ npm test          # 运行全部测试（tests/run-all.mjs）
 | `misc-tools.test.mjs` | 14 |
 | `notebook-task-team.test.mjs` | 17 |
 | `code-outline.test.mjs` | 12 |
-| **合计** | **269** |
+| `mcp.test.mjs` | 10 |
+| **合计** | **279** |
 
 CI：GitHub Actions（push / PR 自动跑）。
 
@@ -200,7 +201,7 @@ CI：GitHub Actions（push / PR 自动跑）。
 | 维度 | Claude Code | self-agent |
 |---|---|---|
 | 语言/运行时 | TypeScript + Bun + React Ink | 纯 Node ESM |
-| 工具数 | 41 | 29 |
+| 工具数 | 41 | 30 |
 | 上下文压缩 | 四层流水线 | 两层 |
 | UI | 终端 React | 文本流 |
 | 依赖 | 大量 | 仅 yaml |

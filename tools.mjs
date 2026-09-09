@@ -1051,6 +1051,56 @@ export const toolDefs = [
     },
   },
   {
+    name: "mcp",
+    description:
+      "调用 MCP（Model Context Protocol）server：list_servers 列出已配置 server / list_tools 列出某 server 工具 / call 调用工具。配置：~/.self-agent/mcp.json。",
+    parameters: {
+      type: "object",
+      properties: {
+        action: { type: "string", enum: ["list_servers", "list_tools", "call"] },
+        server: { type: "string", description: "server 名（list_tools/call 用）" },
+        tool: { type: "string", description: "工具名（call 用）" },
+        args: { type: "object", description: "工具参数（call 用）" },
+      },
+      required: ["action"],
+    },
+    isReadOnly: false,
+    async execute({ action, server, tool, args }) {
+      const { loadMcpConfig, getClient } = await import("./mcp.mjs");
+      const { file, servers } = loadMcpConfig();
+      if (action === "list_servers") {
+        const names = Object.keys(servers);
+        return {
+          text: names.length
+            ? names.map((n) => `- ${n}: ${servers[n].command} ${(servers[n].args ?? []).join(" ")}`).join("\n")
+            : `（未配置 MCP server；配置文件：${file}）`,
+        };
+      }
+      if (!server) return { isError: true, text: `${action} 需要 server 参数` };
+      const conf = servers[server];
+      if (!conf) return { isError: true, text: `未配置 server：${server}` };
+      try {
+        const client = await getClient(server, conf);
+        if (action === "list_tools") {
+          const list = await client.listTools();
+          return {
+            text: list.length
+              ? list.map((x) => `- ${x.name}: ${String(x.description ?? "").slice(0, 90)}`).join("\n")
+              : "（该 server 无工具）",
+          };
+        }
+        if (action === "call") {
+          if (!tool) return { isError: true, text: "call 需要 tool 参数" };
+          const r = await client.callTool(tool, args ?? {});
+          return { isError: r.isError, text: r.text };
+        }
+        return { isError: true, text: `不支持的操作：${action}` };
+      } catch (e) {
+        return { isError: true, text: `MCP 调用失败：${e.message}` };
+      }
+    },
+  },
+  {
     name: "lark_send",
     description:
       "通过飞书 bot 发送文本消息（默认发给用户私聊，可用 chat_id 指定群）。适合把长任务的结果推送给用户。",
