@@ -38,7 +38,7 @@ export async function runAgent({
   messages = [],
   cwd = process.cwd(),
   model,
-  maxSteps = 25,
+  maxSteps = 100,
   contextWindow = 1_050_000,
   thresholdRatio = 0.65,
   depth = 0,

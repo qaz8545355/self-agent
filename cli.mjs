@@ -11,7 +11,7 @@ import { runAgent } from "./agent.mjs";
 import { saveSession, loadSession, listSessions, newSessionId, pruneSessions } from "./session.mjs";
 
 function parseArgs(argv) {
-  const out = { cwd: process.cwd(), maxSteps: 25 };
+  const out = { cwd: process.cwd(), maxSteps: 100 };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--task" || a === "-t") out.task = argv[++i];
@@ -34,7 +34,7 @@ const USAGE = `self-agent — 自研 coding agent
 选项:
   --cwd <dir>       工作目录（默认当前目录）
   --model <name>    模型（默认 gpt-6-astra，走 1MMC 中转）
-  --max-steps <n>   最大步数（默认 25）
+  --max-steps <n>   最大步数（默认 100）
   --stream          流式输出模型回复（实时打印）
   --resume <id>     恢复指定会话
   --list            列出会话

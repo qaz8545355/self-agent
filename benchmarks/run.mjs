@@ -30,7 +30,7 @@ function listCases() {
     .sort();
 }
 
-async function runCase(name, { model, maxSteps = 20 } = {}) {
+async function runCase(name, { model, maxSteps = 100 } = {}) {
   const dir = path.join(CASES_DIR, name);
   const task = readFileSync(path.join(dir, "task.md"), "utf8").trim();
   const work = mkdtempSync(path.join(os.tmpdir(), `sa-bench-${name}-`));

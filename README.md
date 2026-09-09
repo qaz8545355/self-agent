@@ -31,7 +31,7 @@ cd self-agent && npm install
 # 单次任务
 node cli.mjs --task "读取 README.md 并总结" --cwd .
 
-# 指定模型 / 工作目录 / 步数
+# 指定模型 / 工作目录 / 步数（默认上限 100 步）
 node cli.mjs --task "修复 lint 错误" --model gpt-5.6-sol --cwd /path --max-steps 30
 
 # 恢复会话
@@ -212,7 +212,8 @@ npm test          # 运行全部测试（tests/run-all.mjs）
 | `tool-select.test.mjs` | 11 |
 | `readonly-commands.test.mjs` | 71 |
 | `file-history.test.mjs` | 21 |
-| **合计** | **376** |
+| `cli-defaults.test.mjs` | 11 |
+| **合计** | **387** |
 
 CI：GitHub Actions（push / PR 自动跑）。
 

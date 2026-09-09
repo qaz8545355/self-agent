@@ -197,7 +197,7 @@ export const toolDefs = [
       properties: {
         task: { type: "string", description: "自包含的子任务描述" },
         model: { type: "string", description: "可选：指定子代理使用的模型" },
-        max_steps: { type: "number", description: "可选：子代理最大步数（默认 12）" },
+        max_steps: { type: "number", description: "可选：子代理最大步数（默认 100）" },
         isolation: {
           type: "string",
           enum: ["none", "worktree"],
@@ -226,7 +226,7 @@ export const toolDefs = [
           task,
           cwd: workDir,
           model: model ?? ctx.model,
-          maxSteps: Math.max(12, Number(max_steps) || 20),
+          maxSteps: Math.max(100, Number(max_steps) || 100),
           depth: (ctx.depth ?? 0) + 1,
           onEvent: () => {},
         });
