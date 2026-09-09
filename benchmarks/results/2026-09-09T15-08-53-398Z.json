@@ -1,0 +1,79 @@
+{
+  "at": "2026-09-09T15:08:53.399Z",
+  "passed": 8,
+  "total": 8,
+  "records": [
+    {
+      "case": "01-fix-divide",
+      "passed": true,
+      "detail": "测试全部通过",
+      "steps": 6,
+      "tokens": 22876,
+      "durationMs": 55851,
+      "error": null
+    },
+    {
+      "case": "02-fix-average",
+      "passed": true,
+      "detail": "测试全部通过",
+      "steps": 8,
+      "tokens": 30298,
+      "durationMs": 320891,
+      "error": null
+    },
+    {
+      "case": "03-add-slugify",
+      "passed": true,
+      "detail": "测试全部通过",
+      "steps": 5,
+      "tokens": 19681,
+      "durationMs": 70179,
+      "error": null
+    },
+    {
+      "case": "04-rename-symbol",
+      "passed": true,
+      "detail": "OLD_NAME 残留 0 个文件，NEW_NAME 出现于 3 个文件",
+      "steps": 5,
+      "tokens": 18569,
+      "durationMs": 71986,
+      "error": null
+    },
+    {
+      "case": "05-add-test",
+      "passed": true,
+      "detail": "测试文件存在且通过",
+      "steps": 8,
+      "tokens": 31763,
+      "durationMs": 104303,
+      "error": null
+    },
+    {
+      "case": "06-fix-import",
+      "passed": true,
+      "detail": "输出：hello world",
+      "steps": 10,
+      "tokens": 37965,
+      "durationMs": 129065,
+      "error": null
+    },
+    {
+      "case": "07-refactor-dup",
+      "passed": true,
+      "detail": "输出 4 行",
+      "steps": 7,
+      "tokens": 26944,
+      "durationMs": 69011,
+      "error": null
+    },
+    {
+      "case": "08-write-script",
+      "passed": true,
+      "detail": "输出：count: 3",
+      "steps": 4,
+      "tokens": 13741,
+      "durationMs": 178511,
+      "error": null
+    }
+  ]
+}
