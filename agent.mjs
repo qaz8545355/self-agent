@@ -6,7 +6,7 @@
 import { chat, chatStream } from "./llm.mjs";
 import { toOpenAITools, runTool, partitionToolCalls, selectToolsForTask } from "./tools.mjs";
 import { compactIfNeeded, estimateTokens } from "./context.mjs";
-import { skillsCatalog } from "./skills.mjs";
+import { skillsCatalog, activateConditionalSkillsForPaths } from "./skills.mjs";
 import { loadMemoryContext } from "./memory-files.mjs";
 import { loadHooks, resolveHooksFile, runHooks } from "./hooks.mjs";
 import { classifyError } from "./errors.mjs";
@@ -79,6 +79,8 @@ export async function runAgent({
   let stopBlocks = 0;
   // 卡住检测：连续 N 步「无文件改动 + 工具调用/结果重复」则提前终止（stallLimit=0 关闭）
   const stallDetector = createStallDetector({ limit: stallLimit });
+  /** 已提示过的条件技能，避免重复注入 */
+  const announcedSkills = new Set();
   while (steps < maxSteps) {
     steps += 1;
 
@@ -201,6 +203,31 @@ export async function runAgent({
     for (const tc of calls) {
       const r = toolResults.get(tc.id) ?? { isError: true, text: "工具结果丢失" };
       msgs.push({ role: "tool", tool_call_id: tc.id, content: r.text });
+    }
+
+    // 条件技能：本步改动的文件若匹配某技能的 paths，注入提示（同一技能只提示一次）
+    const changedPaths = calls
+      .filter((tc) => WRITE_TOOL_NAMES.has(tc.function?.name) && !toolResults.get(tc.id)?.isError)
+      .map((tc) => {
+        try {
+          return JSON.parse(tc.function?.arguments ?? "{}")?.path;
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+    if (changedPaths.length) {
+      const activated = activateConditionalSkillsForPaths(changedPaths, cwd).filter(
+        (n) => !announcedSkills.has(n)
+      );
+      if (activated.length) {
+        for (const n of activated) announcedSkills.add(n);
+        onEvent({ type: "skills_activated", names: activated });
+        msgs.push({
+          role: "user",
+          content: `[技能激活] 你刚操作的文件匹配以下技能，需要时用 skill 工具加载：${activated.join(", ")}`,
+        });
+      }
     }
 
     // 卡住检测：没有文件改动且工具调用/结果与之前某步完全相同 → 空转，提前终止

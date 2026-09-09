@@ -70,6 +70,7 @@ async function main() {
     else if (ev.type === "force_compact") console.log(`📦 上下文超限，强制压缩后重试`);
     else if (ev.type === "stalled") console.log(`⛔ 连续 ${ev.streak} 步无进展（无文件改动 + 结果重复），提前终止`);
     else if (ev.type === "memory_loaded") console.log(`📄 已注入 ${ev.count} 个记忆文件${ev.truncated ? "（超长已截断）" : ""}`);
+    else if (ev.type === "skills_activated") console.log(`🎯 条件技能激活：${ev.names.join(", ")}`);
     else if (ev.type === "assistant" && ev.content && !opts.stream) console.log(`\n💭 ${ev.content.slice(0, 400)}`);
     else if (ev.type === "tool") console.log(`\n🔧 ${ev.name} ${JSON.stringify(ev.args).slice(0, 200)}`);
     else if (ev.type === "tool_result") {

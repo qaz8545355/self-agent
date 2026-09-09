@@ -258,19 +258,28 @@ export const toolDefs = [
   {
     name: "skill",
     description:
-      "技能加载：不传 name 时列出所有可用技能；传 name 时返回该技能的 SKILL.md 完整内容（按其中步骤执行）。",
+      "技能加载：不传 name 时列出所有可用技能；传 name 时返回该技能的 SKILL.md 内容（按其中步骤执行）。" +
+      "可用 args 传参：技能正文里可用 $ARGUMENTS / $1 / $ARGUMENTS[0] / 命名参数引用。",
     parameters: {
       type: "object",
-      properties: { name: { type: "string", description: "技能名（省略则列出全部）" } },
+      properties: {
+        name: { type: "string", description: "技能名（省略则列出全部）" },
+        args: { type: "string", description: "可选：技能参数（供 $ARGUMENTS / $1 等占位符替换）" },
+      },
     },
     isReadOnly: true,
-    async execute({ name }) {
+    async execute({ name, args }) {
       const { listSkills, loadSkill } = await import("./skills.mjs");
       if (!name) {
         const all = listSkills();
-        return { text: all.map((s) => `- ${s.name}: ${s.description.slice(0, 120)}`).join("\n") || "(无技能)" };
+        return {
+          text:
+            all
+              .map((s) => `- ${s.name}${s.argumentHint ? ` ${s.argumentHint}` : ""}: ${s.description.slice(0, 120)}`)
+              .join("\n") || "(无技能)",
+        };
       }
-      const s = loadSkill(name);
+      const s = loadSkill(name, { args });
       if (!s) return { isError: true, text: `技能不存在：${name}` };
       return { text: `# 技能：${s.name}\n\n${s.content.slice(0, 30_000)}` };
     },
