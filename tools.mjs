@@ -61,24 +61,42 @@ export const toolDefs = [
     description: "在工作目录执行 shell 命令。危险命令会被安全层拦截。",
     parameters: {
       type: "object",
-      properties: { command: { type: "string", description: "要执行的命令" } },
+      properties: {
+        command: { type: "string", description: "要执行的命令" },
+        run_in_background: {
+          type: "boolean",
+          description: "可选：true 时立即转后台执行（长命令用），返回任务 id",
+        },
+      },
       required: ["command"],
     },
     isReadOnly: false,
-    async execute({ command }, ctx = {}) {
+    async execute({ command, run_in_background }, ctx = {}) {
       const check = checkCommand(command);
       if (!check.allow) return { isError: true, text: `⛔ 已拦截（${check.level}）：${check.reason}` };
-      try {
-        const out = execFileSync("/bin/bash", ["-c", command], {
-          cwd: ctx.cwd ?? process.cwd(),
-          encoding: "utf8",
-          timeout: 120_000,
-          maxBuffer: 8 * 1024 * 1024,
-        });
-        return { text: truncate(out || "(无输出)") };
-      } catch (e) {
-        return { isError: true, text: truncate(`exit=${e.status ?? "?"}\n${e.stdout ?? ""}${e.stderr ?? e.message}`) };
+
+      // 统一走后台任务运行时：前台等待最多 FOREGROUND_MS，超时自动转后台
+      const bg = await import("./background-tasks.mjs");
+      const task = bg.startShellTask(command, { cwd: ctx.cwd ?? process.cwd() });
+
+      if (run_in_background) {
+        return { text: `已转后台执行：${task.id}\n用 bg_task {action:"output", id:"${task.id}"} 查看输出。` };
       }
+
+      const finished = await bg.waitForTask(task.id, bg.FOREGROUND_MS);
+      if (!finished) {
+        const cur = bg.readTaskOutput(task.id, { maxBytes: 4000 });
+        return {
+          text: truncate(
+            `⏳ 命令超过 ${bg.FOREGROUND_MS / 1000}s 未结束，已转后台：${task.id}\n当前输出：\n${cur.text || "(暂无输出)"}\n用 bg_task {action:"output", id:"${task.id}"} 查看后续输出。`
+          ),
+        };
+      }
+
+      const r = bg.readTaskOutput(task.id, { maxBytes: 8 * 1024 * 1024 });
+      const text = r.text || "(无输出)";
+      if (task.status === "completed") return { text: truncate(text) };
+      return { isError: true, text: truncate(`exit=${task.exitCode ?? "?"}\n${text}`) };
     },
   },
   {
@@ -587,6 +605,60 @@ export const toolDefs = [
       }
 
       return { isError: true, text: `未知 action：${action}（可选 list / diff / rewind）` };
+    },
+  },
+  {
+    name: "bg_task",
+    description:
+      "后台任务（移植 Claude Code src/tasks/ 的「任务即状态」设计）：start 启动 shell 命令、" +
+      "list 列出、output 增量读输出（按 offset 字节）、stop 停止。输出落盘到 ~/.self-agent/bg-tasks/。",
+    parameters: {
+      type: "object",
+      properties: {
+        action: { type: "string", enum: ["start", "list", "output", "stop"] },
+        command: { type: "string", description: "start 要执行的命令" },
+        id: { type: "string", description: "output / stop 的任务 id" },
+        offset: { type: "number", description: "output 的字节偏移（增量读，默认 0）" },
+        max_bytes: { type: "number", description: "output 单次最大字节数（默认 20000）" },
+      },
+      required: ["action"],
+    },
+    isReadOnly: false,
+    async execute({ action, command, id, offset, max_bytes }, ctx = {}) {
+      const bg = await import("./background-tasks.mjs");
+
+      if (action === "start") {
+        if (!command) return { isError: true, text: "start 需要 command" };
+        const check = checkCommand(command);
+        if (!check.allow) return { isError: true, text: `⛔ 已拦截（${check.level}）：${check.reason}` };
+        const t = bg.startShellTask(command, { cwd: ctx.cwd ?? process.cwd() });
+        return { text: `已启动后台任务 ${t.id}\n输出文件：${t.outputFile}\n用 bg_task {action:"output", id:"${t.id}"} 查看输出。` };
+      }
+
+      if (action === "list") {
+        const list = bg.listTasks();
+        if (!list.length) return { text: "（无后台任务）" };
+        return {
+          text: list
+            .map((t) => `${t.id} [${t.status}] ${t.label}（输出 ${t.outputBytes}B）`)
+            .join("\n"),
+        };
+      }
+
+      if (action === "output") {
+        if (!id) return { isError: true, text: "output 需要 id" };
+        const r = bg.readTaskOutput(id, { offset, maxBytes: max_bytes });
+        if (!r.ok) return { isError: true, text: r.error };
+        return { text: `[${r.status}] offset=${r.offset} eof=${r.eof}\n${r.text || "(暂无输出)"}` };
+      }
+
+      if (action === "stop") {
+        if (!id) return { isError: true, text: "stop 需要 id" };
+        const r = bg.stopTask(id);
+        return r.ok ? { text: r.detail } : { isError: true, text: r.error };
+      }
+
+      return { isError: true, text: `未知 action：${action}（可选 start / list / output / stop）` };
     },
   },
   {
@@ -1226,6 +1298,17 @@ export function isConcurrencySafe(tc) {
       const raw = tc?.function?.arguments;
       const args = typeof raw === "string" ? JSON.parse(raw) : raw;
       if (args && typeof args.command === "string") return isReadOnlyCommand(args.command);
+    } catch {
+      /* 解析失败 → 视为不安全 */
+    }
+  }
+
+  // 子代理：worktree 隔离时可在各自副本内并行（借鉴 coordinator 模式的 worker 隔离）
+  if (name === "subagent") {
+    try {
+      const raw = tc?.function?.arguments;
+      const args = typeof raw === "string" ? JSON.parse(raw) : raw;
+      return args?.isolation === "worktree";
     } catch {
       /* 解析失败 → 视为不安全 */
     }

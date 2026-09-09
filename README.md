@@ -13,9 +13,11 @@
 - **记忆文件注入**：`AGENTS.md` / `CLAUDE.md` 分层加载（用户级 → 项目根 → 当前目录）+ `@include` 展开，超 40k 截断（移植 `claudemd`）
 - **技能参数与条件技能**：SKILL.md 支持 `$ARGUMENTS` / `$0` / 命名参数替换；`paths` 声明的条件技能在操作匹配文件时自动激活（移植 `loadSkillsDir` + `argumentSubstitution`）
 - **@文件附件注入**：消息里的 `@path` / `@"带 空格 路径"` / `@path#L10-20` 自动注入内容（二进制跳过、超限截断，移植 `attachments`）
+- **后台任务运行时**：bash 前台超过 15s 自动转后台；`bg_task` 支持 start/list/output（增量读）/stop；完成通知回灌主循环（移植 `src/tasks/`）
+- **worker 并行**：`subagent` 带 `isolation: "worktree"` 时可在各自副本内并行执行（协调者模式的 worker 隔离）
 - **命令级只读判定**：bash 命令经配置表 + flag 校验判定是否只读（移植 `readOnlyCommandValidation`），只读命令可参与并行
 - **文件改动历史**：写前自动备份，支持 list / diff / rewind 回滚（移植 `fileHistory`）
-- **31 个内置工具**：`bash`、`read_file`、`write_file`、`edit_file`、`glob`、`grep`、`subagent`、`skill`、`web_fetch`、`todo_write`、`git`、`memory`、`check_binary`、`apply_patch`、`file_history`、`run_tests`、`env_info`、`diff`、`ask_user`、`plan_mode`、`http_request`、`schedule`、`sleep`、`config`、`tool_search`、`notebook_edit`、`task`、`team`、`code_outline`、`mcp`、`lark_send`
+- **32 个内置工具**：`bash`、`read_file`、`write_file`、`edit_file`、`glob`、`grep`、`subagent`、`skill`、`web_fetch`、`todo_write`、`git`、`memory`、`check_binary`、`apply_patch`、`file_history`、`bg_task`、`run_tests`、`env_info`、`diff`、`ask_user`、`plan_mode`、`http_request`、`schedule`、`sleep`、`config`、`tool_search`、`notebook_edit`、`task`、`team`、`code_outline`、`mcp`、`lark_send`
 - **安全层**：危险路径/命令拦截（`rm -rf /`、`chmod 777`、写系统目录等）、heredoc 剥离防误判
 - **上下文压缩**：四层流水线（L1 清旧工具结果 → L2 折叠旧回复 → L3 整体摘要），逐层触发
 - **子代理**：独立上下文、结果单点回传、递归防护、**worktree 隔离**（`isolation: "worktree"`）
@@ -202,7 +204,7 @@ npm test          # 运行全部测试（tests/run-all.mjs）
 | `skills.test.mjs` | 12（无技能目录时自动跳过） |
 | `subagent.test.mjs` | 4 |
 | `session.test.mjs` | 5 |
-| `parallel.test.mjs` | 26 |
+| `parallel.test.mjs` | 30 |
 | `apply-patch.test.mjs` | 13 |
 | `collapse.test.mjs` | 13 |
 | `worktree.test.mjs` | 10 |
@@ -221,7 +223,8 @@ npm test          # 运行全部测试（tests/run-all.mjs）
 | `memory-files.test.mjs` | 29 |
 | `skill-args.test.mjs` | 48 |
 | `attachments.test.mjs` | 31 |
-| **合计** | **509** |
+| `background-tasks.test.mjs` | 36 |
+| **合计** | **549** |
 
 CI：GitHub Actions（push / PR 自动跑）。
 

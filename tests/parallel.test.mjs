@@ -23,6 +23,13 @@ t("bash 管道命令不安全", isConcurrencySafe(bashCall("cat a | grep b")) ==
 t("bash 参数非法 JSON 不安全", isConcurrencySafe({ function: { name: "bash", arguments: "not-json" } }) === false);
 t("bash 无 command 字段不安全", isConcurrencySafe({ function: { name: "bash", arguments: "{}" } }) === false);
 
+// 1.6) 子代理 worktree 隔离时可并行（协调者模式 worker 隔离）
+const subCall = (args) => ({ function: { name: "subagent", arguments: JSON.stringify(args) } });
+t("subagent 默认串行", isConcurrencySafe(subCall({ task: "x" })) === false);
+t("subagent worktree 隔离可并行", isConcurrencySafe(subCall({ task: "x", isolation: "worktree" })) === true);
+t("subagent isolation=none 串行", isConcurrencySafe(subCall({ task: "x", isolation: "none" })) === false);
+t("subagent 参数非法 JSON 串行", isConcurrencySafe({ function: { name: "subagent", arguments: "{" } }) === false);
+
 // 2) 分区逻辑
 const mk = (name) => ({ function: { name } });
 const calls = [mk("read_file"), mk("grep"), mk("write_file"), mk("glob"), mk("read_file")];

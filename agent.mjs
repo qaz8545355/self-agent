@@ -9,6 +9,7 @@ import { compactIfNeeded, estimateTokens } from "./context.mjs";
 import { skillsCatalog, activateConditionalSkillsForPaths } from "./skills.mjs";
 import { loadMemoryContext } from "./memory-files.mjs";
 import { collectAttachments, formatAttachments } from "./attachments.mjs";
+import { drainNotifications } from "./background-tasks.mjs";
 import { loadHooks, resolveHooksFile, runHooks } from "./hooks.mjs";
 import { classifyError } from "./errors.mjs";
 
@@ -97,6 +98,19 @@ export async function runAgent({
   const announcedSkills = new Set();
   while (steps < maxSteps) {
     steps += 1;
+
+    // 后台任务完成通知（每步取一次，防重）
+    const bgNotes = drainNotifications();
+    if (bgNotes.length) {
+      onEvent({ type: "bg_notifications", count: bgNotes.length });
+      msgs.push({
+        role: "user",
+        content:
+          `[后台任务完成] ${bgNotes
+            .map((n) => `${n.id}（${n.status}，exit=${n.exitCode ?? "?"}，输出 ${n.outputBytes} 字节）`)
+            .join("；")}\n需要时用 bg_task {action:"output"} 读取输出。`,
+      });
+    }
 
     // 上下文压缩（仅超阈值时触发，先裁剪旧工具结果，再整体摘要）
     const compacted = await compactIfNeeded(msgs, { contextWindow, thresholdRatio, model, onEvent });
