@@ -49,6 +49,35 @@ export function trimToolResults(messages, { keepRecentToolResults = 8 } = {}) {
   return { messages: out, trimmed };
 }
 
+/**
+ * L2 collapse：把「较早的助手长回复」投影成短摘要（保留开头，标注省略长度）。
+ * 只处理纯文本回复（不含 tool_calls），保留最近 keepRecentTurns 条。
+ * @returns {{messages:Array, collapsed:number}}
+ */
+export function collapseOldMessages(messages, { keepRecentTurns = 6, maxChars = 400 } = {}) {
+  const idx = [];
+  messages.forEach((m, i) => {
+    if (
+      m.role === "assistant" &&
+      !m.tool_calls &&
+      typeof m.content === "string" &&
+      m.content.length > maxChars
+    ) {
+      idx.push(i);
+    }
+  });
+  const toCollapse = idx.slice(0, Math.max(0, idx.length - keepRecentTurns));
+  if (toCollapse.length === 0) return { messages, collapsed: 0 };
+  let collapsed = 0;
+  const out = messages.map((m, i) => {
+    if (!toCollapse.includes(i)) return m;
+    if (m.content.startsWith("[已折叠")) return m;
+    collapsed += 1;
+    return { ...m, content: `[已折叠 ${m.content.length} 字符] ${m.content.slice(0, maxChars)}…` };
+  });
+  return { messages: out, collapsed };
+}
+
 const SUMMARY_PROMPT = `请为以下对话生成一份可无缝续接的摘要，只输出摘要正文（不要调用工具）。
 
 摘要需覆盖：
@@ -104,29 +133,44 @@ export async function summarizeHistory(messages, { model, keepRecentMessages = 1
 }
 
 /**
- * 按需压缩：先 L1，仍超阈值则 L2。
+ * 按需压缩（四层流水线，借鉴 Claude Code）：
+ *   L0 snip（工具结果写入时已截断）→ L1 清旧工具结果 → L2 折叠旧助手回复 → L3 整体摘要
+ * 能轻量解决就不做重压缩。
  */
 export async function compactIfNeeded(messages, opts = {}) {
   const { contextWindow, thresholdRatio, model, onEvent = () => {}, keepRecentMessages, force = false } = opts;
-  if (!force && !shouldCompact(messages, { contextWindow, thresholdRatio })) {
+  const still = (m) => shouldCompact(m, { contextWindow, thresholdRatio });
+  if (!force && !still(messages)) {
     return { messages, compacted: false, level: null };
   }
   const before = estimateTokens(messages);
+
+  // L1：清旧工具结果
   const l1 = trimToolResults(messages, opts);
-  if (!shouldCompact(l1.messages, { contextWindow, thresholdRatio })) {
+  if (!still(l1.messages)) {
     onEvent({ type: "compact_l1", trimmed: l1.trimmed, before, after: estimateTokens(l1.messages) });
     return { messages: l1.messages, compacted: true, level: "L1" };
   }
-  const l2 = await summarizeHistory(l1.messages, { model, keepRecentMessages, onEvent });
-  if (l1.trimmed === 0 && l2.summarized === 0) {
-    // 没有可压缩的内容（例如全是最近消息），不虚报压缩
+
+  // L2：折叠较早的助手长回复（投影）
+  const l2 = collapseOldMessages(l1.messages, opts);
+  if (!still(l2.messages)) {
+    onEvent({ type: "compact_l2", collapsed: l2.collapsed, before, after: estimateTokens(l2.messages) });
+    return { messages: l2.messages, compacted: true, level: "L2" };
+  }
+
+  // L3：整体摘要
+  const l3 = await summarizeHistory(l2.messages, { model, keepRecentMessages, onEvent });
+  if (l1.trimmed === 0 && l2.collapsed === 0 && l3.summarized === 0) {
+    // 没有可压缩的内容，不虚报压缩
     return { messages, compacted: false, level: null };
   }
-  if (l2.summarized === 0) {
-    // L1 有效、L2 无内容可摘要 → 保留 L1 结果
-    onEvent({ type: "compact_l1", trimmed: l1.trimmed, before, after: estimateTokens(l1.messages) });
-    return { messages: l1.messages, compacted: true, level: "L1" };
+  if (l3.summarized === 0) {
+    const best = l2.collapsed > 0 ? l2.messages : l1.messages;
+    const level = l2.collapsed > 0 ? "L2" : "L1";
+    onEvent({ type: `compact_${level.toLowerCase()}`, before, after: estimateTokens(best) });
+    return { messages: best, compacted: true, level };
   }
-  onEvent({ type: "compact_l2", summarized: l2.summarized, before, after: estimateTokens(l2.messages) });
-  return { messages: l2.messages, compacted: true, level: "L2" };
+  onEvent({ type: "compact_l3", summarized: l3.summarized, before, after: estimateTokens(l3.messages) });
+  return { messages: l3.messages, compacted: true, level: "L3" };
 }
