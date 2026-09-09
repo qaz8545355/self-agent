@@ -8,6 +8,7 @@ import { toOpenAITools, runTool, partitionToolCalls, selectToolsForTask } from "
 import { compactIfNeeded, estimateTokens } from "./context.mjs";
 import { skillsCatalog, activateConditionalSkillsForPaths } from "./skills.mjs";
 import { loadMemoryContext } from "./memory-files.mjs";
+import { collectAttachments, formatAttachments } from "./attachments.mjs";
 import { loadHooks, resolveHooksFile, runHooks } from "./hooks.mjs";
 import { classifyError } from "./errors.mjs";
 
@@ -67,7 +68,20 @@ export async function runAgent({
   if (task) {
     const pre = runHooks(hookConfig, "UserPromptSubmit", { prompt: task, cwd }, { cwd });
     const injected = pre.outputs.length ? `\n\n[UserPromptSubmit hook 注入]\n${pre.outputs.join("\n")}` : "";
-    msgs.push({ role: "user", content: task + injected });
+    // @文件引用 → 自动注入内容（移植 attachments 的 extractAtMentionedFiles 设计）
+    const attach = collectAttachments(task, { cwd });
+    const attachBlock = attach.attachments.length
+      ? `\n\n[自动附加的文件内容]\n${formatAttachments(attach.attachments)}`
+      : "";
+    msgs.push({ role: "user", content: task + injected + attachBlock });
+    if (attach.attachments.length) {
+      onEvent({
+        type: "attachments_loaded",
+        count: attach.attachments.length,
+        refs: attach.attachments.map((a) => a.ref),
+        skipped: attach.skipped.length,
+      });
+    }
   }
 
   // 按任务挑选工具集（减少每步 schema 开销）
