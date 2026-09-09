@@ -12,8 +12,8 @@ t("解析 decision=block", parseHookOutput('{"decision":"block","reason":"x"}')?
 t("解析 additionalContext", parseHookOutput('{"additionalContext":"ctx"}')?.additionalContext === "ctx");
 t("非 JSON 返回 null", parseHookOutput("plain text") === null);
 
-const dir = TMP + "/hook-test2";
-const logFile = "/tmp/hook-test2/errors.log";
+const dir = TMP + `/hook-test2-${process.pid}-${Date.now()}`;
+const logFile = dir + "/errors.log";
 rmSync(dir, { recursive: true, force: true });
 mkdirSync(dir + "/.self-agent", { recursive: true });
 writeFileSync(dir + "/.self-agent/hooks.json", JSON.stringify({

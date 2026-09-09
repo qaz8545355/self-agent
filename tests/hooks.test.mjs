@@ -6,7 +6,7 @@ import { loadHooks, runHooks, matchHooks, resolveHooksFile } from "../hooks.mjs"
 let pass = 0, fail = 0;
 const t = (name, cond, extra = "") => { cond ? (pass++, console.log(`✅ ${name}${extra}`)) : (fail++, console.log(`❌ ${name}${extra}`)); };
 
-const dir = TMP + "/hook-test";
+const dir = TMP + `/hook-test-${process.pid}-${Date.now()}`;
 mkdirSync(dir + "/.self-agent", { recursive: true });
 writeFileSync(dir + "/.self-agent/hooks.json", JSON.stringify({
   PreToolUse: [
@@ -35,7 +35,7 @@ t("PreToolUse 退出码 2 阻止", blocked.blocked, `→ ${blocked.outputs.join(
 
 // PostToolUse：输出注入
 const post = runHooks(config, "PostToolUse", { tool_name: "bash", tool_result: "ok" }, { cwd: dir });
-t("PostToolUse 输出注入", post.outputs.includes("post-bash-ok"));
+t("PostToolUse 输出注入", post.outputs.includes("post-bash-ok"), " → outputs=" + JSON.stringify(post.outputs) + " errors=" + JSON.stringify(post.errors));
 
 // UserPromptSubmit
 const ups = runHooks(config, "UserPromptSubmit", { prompt: "hi" }, { cwd: dir });

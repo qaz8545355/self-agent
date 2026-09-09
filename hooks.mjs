@@ -116,6 +116,21 @@ export function runHooks(config, event, payload, { cwd = process.cwd(), timeout 
     } catch (e) {
       stdout = String(e.stdout ?? "").trim();
       const status = e.status ?? "?";
+      // 注意：命令若立即退出且不读 stdin，写 input 会偶发 EPIPE，此时
+      // execFileSync 抛错但 e.status === 0（进程其实成功）。按成功处理。
+      if (status === 0) {
+        const parsed = parseHookOutput(stdout);
+        if (parsed) {
+          if (parsed.decision === "block" || parsed.decision === "deny") {
+            blocked = true;
+            outputs.push(parsed.reason ?? `hook 阻止：${h.command}`);
+          }
+          if (parsed.additionalContext) outputs.push(String(parsed.additionalContext));
+        } else if (stdout) {
+          outputs.push(stdout);
+        }
+        continue;
+      }
       // JSON 输出优先于退出码
       const parsed = parseHookOutput(stdout);
       if (parsed) {
