@@ -8,7 +8,7 @@
 ## 特性
 
 - **工具契约**：每个工具声明 `name/description/parameters/isReadOnly/execute`
-- **13 个内置工具**：`bash`、`read_file`、`write_file`、`edit_file`、`glob`、`grep`、`subagent`、`skill`、`web_fetch`、`todo_write`、`git`、`memory`、`lark_send`
+- **14 个内置工具**：`bash`、`read_file`、`write_file`、`edit_file`、`glob`、`grep`、`subagent`、`skill`、`web_fetch`、`todo_write`、`git`、`memory`、`check_binary`、`lark_send`
 - **安全层**：危险路径/命令拦截（`rm -rf /`、`chmod 777`、写系统目录等）、heredoc 剥离防误判
 - **上下文压缩**：token 估算 + 两层策略（L1 裁剪旧工具结果 / L2 整体摘要）
 - **子代理**：独立上下文、结果单点回传、递归防护
@@ -122,6 +122,18 @@ cli.mjs          入口（参数解析 / 输出）
 | 递归 | 子代理内禁止再派子代理 |
 | 终止 | 无工具调用 / 步数上限 / 压缩失败熔断 |
 
+## 错误分类与重试
+
+移植 Claude Code \`services/api/errors.ts\` 的设计（\`errors.mjs\`）：
+
+| 错误类型 | 处理 |
+|---|---|
+| prompt 过长 | **解析出 token 差值**（如 "137500 tokens > 135000"），强制压缩后重试 |
+| 限流 / 过载 / 网络 | 指数退避自动重试（最多 2 次） |
+| 密钥无效 / 余额不足 | 直接失败，不浪费时间重试 |
+
+配合 \`check_binary\` 工具（依赖检测 + 缓存），解决"假设外部命令存在"的问题。
+
 ## 记忆时效性
 
 移植 Claude Code `memdir/memoryAge` 的设计——源码注释指出：
@@ -156,6 +168,8 @@ npm test          # 运行全部测试（tests/run-all.mjs）
 | 测试文件 | 用例 |
 |---|---:|
 | `memory-age.test.mjs` | 16 |
+| `errors.test.mjs` | 16 |
+| `binary-check.test.mjs` | 7 |
 | `safety.test.mjs` | 14 |
 | `context.test.mjs` | 12 |
 | `hooks.test.mjs` | 9 |
@@ -164,7 +178,7 @@ npm test          # 运行全部测试（tests/run-all.mjs）
 | `git.test.mjs` | 7 |
 | `skills.test.mjs` | 12（无技能目录时自动跳过） |
 | `subagent.test.mjs` | 4 |
-| **合计** | **90** |
+| **合计** | **113** |
 
 CI：GitHub Actions（push / PR 自动跑）。
 
@@ -173,7 +187,7 @@ CI：GitHub Actions（push / PR 自动跑）。
 | 维度 | Claude Code | self-agent |
 |---|---|---|
 | 语言/运行时 | TypeScript + Bun + React Ink | 纯 Node ESM |
-| 工具数 | 41 | 13 |
+| 工具数 | 41 | 14 |
 | 上下文压缩 | 四层流水线 | 两层 |
 | UI | 终端 React | 文本流 |
 | 依赖 | 大量 | 仅 yaml |

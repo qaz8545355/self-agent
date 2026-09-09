@@ -107,8 +107,8 @@ export async function summarizeHistory(messages, { model, keepRecentMessages = 1
  * 按需压缩：先 L1，仍超阈值则 L2。
  */
 export async function compactIfNeeded(messages, opts = {}) {
-  const { contextWindow, thresholdRatio, model, onEvent = () => {}, keepRecentMessages } = opts;
-  if (!shouldCompact(messages, { contextWindow, thresholdRatio })) {
+  const { contextWindow, thresholdRatio, model, onEvent = () => {}, keepRecentMessages, force = false } = opts;
+  if (!force && !shouldCompact(messages, { contextWindow, thresholdRatio })) {
     return { messages, compacted: false, level: null };
   }
   const before = estimateTokens(messages);

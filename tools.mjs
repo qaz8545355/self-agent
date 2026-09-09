@@ -391,6 +391,27 @@ export const toolDefs = [
     },
   },
   {
+    name: "check_binary",
+    description:
+      "检测外部命令是否可用（带缓存）。依赖外部命令（rg/jq/ffmpeg 等）前先确认，避免「命令不存在」失败；不传 command 时返回常见命令的环境清单。",
+    parameters: {
+      type: "object",
+      properties: {
+        command: { type: "string", description: "要检测的命令名（省略则返回常见命令清单）" },
+      },
+    },
+    isReadOnly: true,
+    async execute({ command }) {
+      const { isBinaryInstalled, COMMON_BINARIES } = await import("./binary-check.mjs");
+      if (!command) {
+        const list = COMMON_BINARIES.map((c) => `${isBinaryInstalled(c) ? "✓" : "✗"} ${c}`);
+        return { text: `常见命令可用性：\n${list.join("\n")}` };
+      }
+      const ok = isBinaryInstalled(command);
+      return { text: ok ? `✓ ${command} 可用` : `✗ ${command} 不可用（请改用内置工具或替代方案）` };
+    },
+  },
+  {
     name: "lark_send",
     description:
       "通过飞书 bot 发送文本消息（默认发给用户私聊，可用 chat_id 指定群）。适合把长任务的结果推送给用户。",

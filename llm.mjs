@@ -2,6 +2,7 @@
  * llm.mjs — 模型客户端（OpenAI 兼容，走 1MMC 中转站）
  */
 import "./env.mjs";
+import { withRetry } from "./errors.mjs";
 import { readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -28,7 +29,7 @@ export const DEFAULTS = {
  * 单次对话请求。
  * @returns {{content: string, tool_calls?: Array, usage?: object, model?: string}}
  */
-export async function chat({ messages, tools, model, baseURL, apiKey, temperature = 0, maxTokens = 8192, signal }) {
+export async function chat({ messages, tools, model, baseURL, apiKey, temperature = 0, maxTokens = 8192, signal, onRetry }) {
   const key = apiKey ?? readKey(DEFAULTS.keyEnv);
   if (!key) throw new Error(`缺少 API key（${DEFAULTS.keyEnv}）`);
   const url = `${baseURL ?? DEFAULTS.baseURL}/chat/completions`;
@@ -42,31 +43,41 @@ export async function chat({ messages, tools, model, baseURL, apiKey, temperatur
     body.tools = tools;
     body.tool_choice = "auto";
   }
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
-    body: JSON.stringify(body),
-    signal,
-  });
-  const text = await res.text();
-  let data;
-  try {
-    data = JSON.parse(text);
-  } catch {
-    throw new Error(`模型返回非 JSON（HTTP ${res.status}）：${text.slice(0, 200)}`);
-  }
-  if (!res.ok) {
-    throw new Error(`模型调用失败（HTTP ${res.status}）：${data?.error?.message ?? text.slice(0, 200)}`);
-  }
-  const choice = data.choices?.[0];
-  if (!choice) throw new Error(`模型无返回：${text.slice(0, 200)}`);
-  return {
-    content: choice.message?.content ?? "",
-    tool_calls: choice.message?.tool_calls,
-    usage: data.usage,
-    model: data.model,
-    finish_reason: choice.finish_reason,
-  };
+  // 带分类的自动重试：限流/过载/网络错误指数退避；密钥/余额错误直接失败
+  return withRetry(
+    async () => {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
+        body: JSON.stringify(body),
+        signal,
+      });
+      const text = await res.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        const err = new Error(`模型返回非 JSON（HTTP ${res.status}）：${text.slice(0, 200)}`);
+        err.status = res.status;
+        throw err;
+      }
+      if (!res.ok) {
+        const err = new Error(`模型调用失败（HTTP ${res.status}）：${data?.error?.message ?? text.slice(0, 200)}`);
+        err.status = res.status;
+        throw err;
+      }
+      const choice = data.choices?.[0];
+      if (!choice) throw new Error(`模型无返回：${text.slice(0, 200)}`);
+      return {
+        content: choice.message?.content ?? "",
+        tool_calls: choice.message?.tool_calls,
+        usage: data.usage,
+        model: data.model,
+        finish_reason: choice.finish_reason,
+      };
+    },
+    { onRetry }
+  );
 }
 
 /**
@@ -108,7 +119,9 @@ export async function chatStream({
   });
   if (!res.ok) {
     const t = await res.text();
-    throw new Error(`模型调用失败（HTTP ${res.status}）：${t.slice(0, 200)}`);
+    const err = new Error(`模型调用失败（HTTP ${res.status}）：${t.slice(0, 200)}`);
+    err.status = res.status;
+    throw err;
   }
 
   const reader = res.body.getReader();

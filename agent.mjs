@@ -8,6 +8,7 @@ import { toOpenAITools, runTool } from "./tools.mjs";
 import { compactIfNeeded, estimateTokens } from "./context.mjs";
 import { skillsCatalog } from "./skills.mjs";
 import { loadHooks, resolveHooksFile, runHooks } from "./hooks.mjs";
+import { classifyError } from "./errors.mjs";
 
 export const SYSTEM_PROMPT = `你是一个 coding agent，运行在用户的服务器上，通过工具完成编程与运维任务。
 
@@ -15,6 +16,7 @@ export const SYSTEM_PROMPT = `你是一个 coding agent，运行在用户的服�
 - 修改文件前先 read_file 确认内容；编辑用 edit_file（old_string 必须唯一）。
 - 查找文件用 glob 工具，搜索内容用 grep 工具——两者都是**内置实现，不依赖 rg / find / grep 等外部命令**，不要用 bash 去调这些命令。
 - 执行命令用 bash；bash 只接受 command 一个参数（工作目录已固定，不需要也不能传 cwd/workdir）。
+- 依赖外部命令（rg / jq / ffmpeg 等）前，先用 check_binary 确认它存在，不存在就改用内置工具或替代方案。
 - 危险命令会被安全层拦截；被拦截时不要重试同样的命令，换安全做法或说明原因。
 - 每次工具调用后根据结果决定下一步；不要臆测结果。
 - 回答用中文，简洁；完成任务后给出结论和改动的文件清单。
@@ -70,14 +72,39 @@ export async function runAgent({
     const compacted = await compactIfNeeded(msgs, { contextWindow, thresholdRatio, model, onEvent });
     if (compacted.compacted) msgs = compacted.messages;
 
-    const resp = stream
-      ? await chatStream({
-          messages: msgs,
-          tools: toOpenAITools(),
+    let resp;
+    try {
+      resp = stream
+        ? await chatStream({
+            messages: msgs,
+            tools: toOpenAITools(),
+            model,
+            onDelta: (text) => onEvent({ type: "delta", text }),
+          })
+        : await chat({
+            messages: msgs,
+            tools: toOpenAITools(),
+            model,
+            onRetry: (info) => onEvent({ type: "retry", ...info }),
+          });
+    } catch (e) {
+      const cls = e?.classification ?? classifyError(e);
+      if (cls.shouldCompact) {
+        // 上下文超限：强制压缩后重试本轮（不消耗额外步数）
+        onEvent({ type: "force_compact", tokenInfo: cls.tokenInfo, error: String(e?.message ?? e) });
+        const forced = await compactIfNeeded(msgs, {
+          contextWindow,
+          thresholdRatio,
           model,
-          onDelta: (text) => onEvent({ type: "delta", text }),
-        })
-      : await chat({ messages: msgs, tools: toOpenAITools(), model });
+          onEvent,
+          force: true,
+        });
+        msgs = forced.messages;
+        steps -= 1;
+        continue;
+      }
+      throw e;
+    }
     totalTokens += resp.usage?.total_tokens ?? 0;
     onEvent({ type: "assistant", step: steps, content: resp.content, usage: resp.usage });
 
