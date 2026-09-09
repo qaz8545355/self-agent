@@ -1,4 +1,4 @@
-import { parsePromptTooLong, classifyError, withRetry, ERROR_KINDS } from "../errors.mjs";
+import { parsePromptTooLong, classifyError, withRetry, ERROR_KINDS, parseRateLimitInfo } from "../errors.mjs";
 
 let pass = 0, fail = 0;
 const t = (name, cond, extra = "") => { cond ? (pass++, console.log(`✅ ${name}${extra}`)) : (fail++, console.log(`❌ ${name}${extra}`)); };
@@ -52,6 +52,21 @@ const result = await withRetry(async () => {
 }, { maxRetries: 3, onRetry: (i) => retryEvents.push(i.kind) });
 t("可重试错误最终成功", result === "ok" && attempts === 3, `（尝试 ${attempts} 次）`);
 t("onRetry 收到分类", retryEvents.length === 2 && retryEvents.every((k) => k === ERROR_KINDS.NETWORK));
+
+
+// 7) 限流重置时间解析
+const r1 = parseRateLimitInfo("Monthly usage limit reached. Resets in 4 days.");
+t("解析 Resets in 4 days", r1 && r1.resetMs === 4 * 86400000, `→ ${JSON.stringify(r1)}`);
+const r2 = parseRateLimitInfo("Rate limit reached, retry after 30 seconds");
+t("解析 retry after 30 seconds", r2 && r2.resetMs === 30000);
+const r3 = parseRateLimitInfo("no reset info here");
+t("无重置信息返回 null", r3 === null);
+
+// 8) 长期限额不重试 / 短期限流可重试
+const longLimit = classifyError(new Error("Monthly usage limit reached. Resets in 4 days."));
+t("长期限额不自动重试", longLimit.kind === ERROR_KINDS.RATE_LIMIT && longLimit.retryable === false && longLimit.resetInfo?.resetMs > 3600000);
+const shortLimit = classifyError({ status: 429, message: "rate limit, retry after 5 seconds" });
+t("短期限流可重试（waitMs 取自重置时间）", shortLimit.retryable === true && shortLimit.waitMs === 5000, `→ waitMs=${shortLimit.waitMs}`);
 
 console.log(`\n结果: ${pass} 通过 / ${fail} 失败`);
 process.exit(fail ? 1 : 0);

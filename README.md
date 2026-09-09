@@ -129,7 +129,8 @@ cli.mjs          入口（参数解析 / 输出）
 | 错误类型 | 处理 |
 |---|---|
 | prompt 过长 | **解析出 token 差值**（如 "137500 tokens > 135000"），强制压缩后重试 |
-| 限流 / 过载 / 网络 | 指数退避自动重试（最多 2 次） |
+| 限流（短期）/ 过载 / 网络 | 指数退避自动重试；**解析重置时间**（"4 days"、"30 seconds"） |
+| 限流（长期） | 如"4 天后重置"→ **不重试**，直接报错避免白等 |
 | 密钥无效 / 余额不足 | 直接失败，不浪费时间重试 |
 
 配合 `check_binary` 工具（依赖检测 + 缓存），解决"假设外部命令存在"的问题。
@@ -168,7 +169,7 @@ npm test          # 运行全部测试（tests/run-all.mjs）
 | 测试文件 | 用例 |
 |---|---:|
 | `memory-age.test.mjs` | 16 |
-| `errors.test.mjs` | 16 |
+| `errors.test.mjs` | 21 |
 | `binary-check.test.mjs` | 7 |
 | `safety.test.mjs` | 14 |
 | `context.test.mjs` | 12 |
@@ -178,7 +179,8 @@ npm test          # 运行全部测试（tests/run-all.mjs）
 | `git.test.mjs` | 7 |
 | `skills.test.mjs` | 12（无技能目录时自动跳过） |
 | `subagent.test.mjs` | 4 |
-| **合计** | **113** |
+| `session.test.mjs` | 5 |
+| **合计** | **139** |
 
 CI：GitHub Actions（push / PR 自动跑）。
 

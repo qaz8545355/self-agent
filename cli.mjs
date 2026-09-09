@@ -8,7 +8,7 @@
  *   node cli.mjs --list
  */
 import { runAgent } from "./agent.mjs";
-import { saveSession, loadSession, listSessions, newSessionId } from "./session.mjs";
+import { saveSession, loadSession, listSessions, newSessionId, pruneSessions } from "./session.mjs";
 
 function parseArgs(argv) {
   const out = { cwd: process.cwd(), maxSteps: 25 };
@@ -84,6 +84,13 @@ async function main() {
 
   console.log(`\n────────────\n${result.content}`);
   const file = saveSession(sessionId, result.messages, { model: opts.model, cwd: opts.cwd });
+  // 后台清理旧会话（保留最近 50 个 / 30 天）
+  try {
+    const pruned = pruneSessions();
+    if (pruned.deleted > 0) console.log(`[清理] 删除旧会话 ${pruned.deleted} 个，保留 ${pruned.kept} 个`);
+  } catch {
+    /* 清理失败不影响主流程 */
+  }
   console.log(`\n[session ${sessionId}] steps=${result.steps} tokens≈${result.totalTokens} → ${file}`);
 }
 

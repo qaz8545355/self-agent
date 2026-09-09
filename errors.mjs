@@ -32,9 +32,42 @@ export function parsePromptTooLong(message) {
 }
 
 /**
+ * 从限流错误消息解析重置时间。
+ * 支持："Resets in 4 days" / "retry after 30 seconds" / "resets at 2026-09-10T00:00:00Z"
+ * @returns {{resetMs:number, humanText:string}|null}
+ */
+export function parseRateLimitInfo(message) {
+  const msg = String(message ?? "");
+  const rel = msg.match(
+    /(?:reset|resets|retry|try again)\s+(?:in|after)\s+(\d+(?:\.\d+)?)\s*(seconds?|secs?|s|minutes?|mins?|m|hours?|hrs?|h|days?|d)\b/i
+  );
+  if (rel) {
+    const n = Number(rel[1]);
+    const unit = rel[2].toLowerCase();
+    const ms = unit.startsWith("s")
+      ? n * 1000
+      : unit.startsWith("min") || unit === "m"
+        ? n * 60_000
+        : unit.startsWith("h")
+          ? n * 3_600_000
+          : n * 86_400_000;
+    return { resetMs: ms, humanText: `${n} ${rel[2]}` };
+  }
+  const abs = msg.match(/resets?\s+at\s+([0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9:.+\-Z]+)/i);
+  if (abs) {
+    const t = Date.parse(abs[1]);
+    if (Number.isFinite(t)) return { resetMs: Math.max(0, t - Date.now()), humanText: abs[1] };
+  }
+  return null;
+}
+
+/** 超过 1 小时的限额视为"长期"，不值得自动重试 */
+const LONG_LIMIT_MS = 3_600_000;
+
+/**
  * 分类一个错误。
  * @param {unknown} err
- * @returns {{kind:string, retryable:boolean, shouldCompact?:boolean, waitMs?:number, tokenInfo?:object|null}}
+ * @returns {{kind:string, retryable:boolean, shouldCompact?:boolean, waitMs?:number, tokenInfo?:object|null, resetInfo?:object|null}}
  */
 export function classifyError(err) {
   const msg = String(err?.message ?? err ?? "");
@@ -49,8 +82,16 @@ export function classifyError(err) {
   if (/prompt is too long|context length|context_length_exceeded|maximum context|too many tokens/i.test(msg)) {
     return { kind: ERROR_KINDS.PROMPT_TOO_LONG, retryable: false, shouldCompact: true, tokenInfo: parsePromptTooLong(msg) };
   }
-  if (status === 429 || /rate limit|too many requests|quota exceeded|请求过于频繁/i.test(msg)) {
-    return { kind: ERROR_KINDS.RATE_LIMIT, retryable: true, waitMs: 5000 };
+  if (status === 429 || /rate limit|too many requests|quota exceeded|usage limit|请求过于频繁/i.test(msg)) {
+    const resetInfo = parseRateLimitInfo(msg);
+    // 长期限额（如"4 天后重置"）不自动重试，避免白等
+    const longTerm = (resetInfo?.resetMs ?? 0) > LONG_LIMIT_MS;
+    return {
+      kind: ERROR_KINDS.RATE_LIMIT,
+      retryable: !longTerm,
+      waitMs: longTerm ? undefined : Math.min(resetInfo?.resetMs ?? 5000, 30_000),
+      resetInfo,
+    };
   }
   if (status === 529 || status === 503 || /overloaded|server is busy|temporarily unavailable|繁忙/i.test(msg)) {
     return { kind: ERROR_KINDS.OVERLOADED, retryable: true, waitMs: 3000 };
