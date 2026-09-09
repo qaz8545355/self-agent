@@ -845,6 +845,184 @@ export const toolDefs = [
     },
   },
   {
+    name: "notebook_edit",
+    description:
+      "编辑 Jupyter Notebook（.ipynb）：list_cells 列出单元格 / read_cell 读取 / replace_cell 替换 / add_cell 追加。",
+    parameters: {
+      type: "object",
+      properties: {
+        action: { type: "string", enum: ["list_cells", "read_cell", "replace_cell", "add_cell"] },
+        path: { type: "string", description: "notebook 文件路径" },
+        index: { type: "number", description: "单元格索引（read/replace 用）" },
+        content: { type: "string", description: "单元格内容（replace/add 用）" },
+        cell_type: { type: "string", enum: ["code", "markdown"], description: "单元格类型（默认 code）" },
+      },
+      required: ["action", "path"],
+    },
+    isReadOnly: false,
+    async execute({ action, path: p, index, content, cell_type = "code" }, ctx = {}) {
+      const full = path.resolve(ctx.cwd ?? process.cwd(), p);
+      if (!existsSync(full)) return { isError: true, text: `文件不存在：${p}` };
+      let nb;
+      try {
+        nb = JSON.parse(readFileSync(full, "utf8"));
+      } catch (e) {
+        return { isError: true, text: `notebook 解析失败：${e.message}` };
+      }
+      const cells = nb.cells ?? [];
+      const cellText = (c) => (Array.isArray(c.source) ? c.source.join("") : String(c.source ?? ""));
+
+      if (action === "list_cells") {
+        return {
+          text: cells.length
+            ? cells.map((c, i) => `[${i}] ${c.cell_type} (${cellText(c).length} 字符) ${cellText(c).slice(0, 60).replace(/\n/g, " ")}`).join("\n")
+            : "（空 notebook）",
+        };
+      }
+      if (action === "read_cell") {
+        if (!Number.isInteger(index) || !cells[index]) return { isError: true, text: "index 无效" };
+        return { text: cellText(cells[index]) };
+      }
+      if (action === "replace_cell") {
+        if (!Number.isInteger(index) || !cells[index]) return { isError: true, text: "index 无效" };
+        if (typeof content !== "string") return { isError: true, text: "replace_cell 需要 content" };
+        cells[index].source = content.split("\n").map((l, i, a) => (i < a.length - 1 ? l + "\n" : l));
+        writeFileSync(full, JSON.stringify(nb, null, 1), "utf8");
+        return { text: `已替换单元格 [${index}]` };
+      }
+      if (action === "add_cell") {
+        if (typeof content !== "string") return { isError: true, text: "add_cell 需要 content" };
+        cells.push({
+          cell_type,
+          metadata: {},
+          source: content.split("\n").map((l, i, a) => (i < a.length - 1 ? l + "\n" : l)),
+          ...(cell_type === "code" ? { outputs: [], execution_count: null } : {}),
+        });
+        nb.cells = cells;
+        writeFileSync(full, JSON.stringify(nb, null, 1), "utf8");
+        return { text: `已追加 ${cell_type} 单元格（共 ${cells.length} 个）` };
+      }
+      return { isError: true, text: `不支持的操作：${action}` };
+    },
+  },
+  {
+    name: "task",
+    description:
+      "持久化任务管理（存 ~/.self-agent/tasks.json，跨会话保留）：create / list / update / complete / delete。",
+    parameters: {
+      type: "object",
+      properties: {
+        action: { type: "string", enum: ["create", "list", "update", "complete", "delete"] },
+        id: { type: "string", description: "任务 ID（update/complete/delete 用）" },
+        title: { type: "string", description: "任务标题（create 用）" },
+        status: { type: "string", enum: ["pending", "in_progress", "completed"], description: "状态（update 用）" },
+        note: { type: "string", description: "备注" },
+      },
+      required: ["action"],
+    },
+    isReadOnly: false,
+    async execute({ action, id, title, status, note }) {
+      const file = process.env.SELF_AGENT_TASKS ?? path.join(os.homedir(), ".self-agent", "tasks.json");
+      let list = [];
+      try {
+        list = JSON.parse(readFileSync(file, "utf8"));
+      } catch {
+        list = [];
+      }
+      if (!Array.isArray(list)) list = [];
+      const save = () => {
+        mkdirSync(path.dirname(file), { recursive: true });
+        writeFileSync(file, JSON.stringify(list, null, 2), "utf8");
+      };
+
+      if (action === "list") {
+        if (!list.length) return { text: "（无任务）" };
+        return {
+          text: list
+            .map((x) => `- [${x.status}] ${x.id} ${x.title}${x.note ? `（${x.note}）` : ""}`)
+            .join("\n"),
+        };
+      }
+      if (action === "create") {
+        if (!title) return { isError: true, text: "create 需要 title" };
+        const tid = `t${Date.now().toString(36)}`;
+        list.push({ id: tid, title, status: "pending", note: note ?? "", createdAt: new Date().toISOString() });
+        save();
+        return { text: `已创建任务 ${tid}：${title}` };
+      }
+      const found = list.find((x) => x.id === id);
+      if (!found) return { isError: true, text: `未找到任务：${id}` };
+      if (action === "update") {
+        if (status) found.status = status;
+        if (note !== undefined) found.note = note;
+        save();
+        return { text: `已更新 ${id}（status=${found.status}）` };
+      }
+      if (action === "complete") {
+        found.status = "completed";
+        save();
+        return { text: `已完成 ${id}：${found.title}` };
+      }
+      if (action === "delete") {
+        list = list.filter((x) => x.id !== id);
+        save();
+        return { text: `已删除 ${id}` };
+      }
+      return { isError: true, text: `不支持的操作：${action}` };
+    },
+  },
+  {
+    name: "team",
+    description:
+      "团队模式：定义/列出/移除团队成员（名称 + 角色 + 专长）。配合 subagent 可按成员专长派发任务。",
+    parameters: {
+      type: "object",
+      properties: {
+        action: { type: "string", enum: ["add", "list", "remove"] },
+        name: { type: "string", description: "成员名（唯一）" },
+        role: { type: "string", description: "角色（如 架构师 / 执行者 / 审查者）" },
+        description: { type: "string", description: "专长描述" },
+      },
+      required: ["action"],
+    },
+    isReadOnly: false,
+    async execute({ action, name, role, description }) {
+      const file = process.env.SELF_AGENT_TEAM ?? path.join(os.homedir(), ".self-agent", "team.json");
+      let list = [];
+      try {
+        list = JSON.parse(readFileSync(file, "utf8"));
+      } catch {
+        list = [];
+      }
+      if (!Array.isArray(list)) list = [];
+      const save = () => {
+        mkdirSync(path.dirname(file), { recursive: true });
+        writeFileSync(file, JSON.stringify(list, null, 2), "utf8");
+      };
+
+      if (action === "list") {
+        if (!list.length) return { text: "（团队为空）" };
+        return {
+          text: list.map((m) => `- ${m.name}｜${m.role ?? "未指定"}｜${m.description ?? ""}`).join("\n"),
+        };
+      }
+      if (action === "add") {
+        if (!name) return { isError: true, text: "add 需要 name" };
+        list = list.filter((m) => m.name !== name);
+        list.push({ name, role: role ?? "", description: description ?? "", addedAt: new Date().toISOString() });
+        save();
+        return { text: `已添加成员「${name}」（${role ?? "未指定角色"}）` };
+      }
+      if (action === "remove") {
+        const before = list.length;
+        list = list.filter((m) => m.name !== name);
+        save();
+        return { text: before === list.length ? `未找到成员「${name}」` : `已移除「${name}」` };
+      }
+      return { isError: true, text: `不支持的操作：${action}` };
+    },
+  },
+  {
     name: "lark_send",
     description:
       "通过飞书 bot 发送文本消息（默认发给用户私聊，可用 chat_id 指定群）。适合把长任务的结果推送给用户。",
