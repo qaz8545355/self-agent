@@ -1023,6 +1023,34 @@ export const toolDefs = [
     },
   },
   {
+    name: "code_outline",
+    description:
+      "提取文件的代码结构（函数/类/方法/导出），比通读全文更省 token。支持 JS/TS/Python/Go/Rust。",
+    parameters: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "文件路径" },
+        max: { type: "number", description: "最多显示符号数（默认 100）" },
+      },
+      required: ["path"],
+    },
+    isReadOnly: true,
+    async execute({ path: p, max = 100 }, ctx = {}) {
+      const full = path.resolve(ctx.cwd ?? process.cwd(), p);
+      if (!existsSync(full)) return { isError: true, text: `文件不存在：${p}` };
+      try {
+        const content = readFileSync(full, "utf8");
+        const { extractSymbols, renderOutline } = await import("./code-outline.mjs");
+        const symbols = extractSymbols(content, full);
+        return {
+          text: `${p}（${symbols.length} 个符号 / ${content.split("\n").length} 行）\n${renderOutline(symbols, { max })}`,
+        };
+      } catch (e) {
+        return { isError: true, text: `提取失败：${e.message}` };
+      }
+    },
+  },
+  {
     name: "lark_send",
     description:
       "通过飞书 bot 发送文本消息（默认发给用户私聊，可用 chat_id 指定群）。适合把长任务的结果推送给用户。",
