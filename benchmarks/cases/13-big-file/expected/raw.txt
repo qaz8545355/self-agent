@@ -1,0 +1,4 @@
+alice:40
+alice:50
+bob 45
+carol:30

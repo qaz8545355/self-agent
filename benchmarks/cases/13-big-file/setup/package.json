@@ -1,0 +1,7 @@
+{
+  "name": "c13-bigfile",
+  "type": "module",
+  "scripts": {
+    "report": "node cli.mjs report"
+  }
+}

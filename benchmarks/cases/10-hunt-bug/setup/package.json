@@ -1,0 +1,7 @@
+{
+  "name": "c10-hunt",
+  "type": "module",
+  "scripts": {
+    "start": "node app.mjs"
+  }
+}

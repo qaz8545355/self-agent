@@ -1,0 +1,7 @@
+{
+  "name": "c9-constraint",
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}

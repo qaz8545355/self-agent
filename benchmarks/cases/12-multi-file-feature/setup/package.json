@@ -1,0 +1,7 @@
+{
+  "name": "c12-feature",
+  "type": "module",
+  "scripts": {
+    "start": "node index.mjs"
+  }
+}
