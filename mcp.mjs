@@ -8,11 +8,16 @@
  *   { "servers": { "echo": { "command": "node", "args": ["server.mjs"], "env": {} } } }
  */
 import { spawn } from "node:child_process";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 
 const DEFAULT_CONFIG = path.join(os.homedir(), ".self-agent", "mcp.json");
+
+/** 项目级 server 的审批记录（可用 SELF_AGENT_MCP_APPROVALS 覆盖） */
+const DEFAULT_APPROVALS =
+  process.env.SELF_AGENT_MCP_APPROVALS ?? path.join(os.homedir(), ".self-agent", "mcp-approved.json");
 
 /** 读取 MCP 配置 */
 export function loadMcpConfig(file = process.env.SELF_AGENT_MCP_CONFIG ?? DEFAULT_CONFIG) {
@@ -152,8 +157,9 @@ export class McpClient {
 /** 连接缓存（同一 server 复用进程） */
 const pool = new Map();
 
-/** 获取（并按需连接）某个 server 的客户端 */
-export async function getClient(name, conf) {
+/** 获取（并按需连接）某个 server 的客户端；enforceApproval=true 时校验项目级 server 审批 */
+export async function getClient(name, conf, options = {}) {
+  if (options.enforceApproval) assertApproved(name, conf, options.approvalFile ?? DEFAULT_APPROVALS);
   if (pool.has(name)) {
     const c = pool.get(name);
     if (c.ready) return c;
@@ -169,4 +175,124 @@ export async function getClient(name, conf) {
 export function closeAll() {
   for (const c of pool.values()) c.close();
   pool.clear();
+}
+
+// ---------------------------------------------------------------------------
+// 多作用域配置（移植 services/mcp/config.ts 的 scope 设计）
+// ---------------------------------------------------------------------------
+
+/**
+ * 合并多作用域配置：用户级（`~/.self-agent/mcp.json`）→ 项目级（`<cwd>/.self-agent/mcp.json`）。
+ * 同名 server 项目级覆盖用户级；每个 server 带 `scope` 与 `sourceFile`。
+ */
+export function loadMcpConfigs(cwd = process.cwd(), options = {}) {
+  const userFile = options.userFile ?? process.env.SELF_AGENT_MCP_CONFIG ?? DEFAULT_CONFIG;
+  const projectFile = options.projectFile ?? path.join(cwd, ".self-agent", "mcp.json");
+
+  const servers = {};
+  const files = [];
+  for (const [file, scope] of [
+    [userFile, "user"],
+    [projectFile, "project"],
+  ]) {
+    if (!existsSync(file)) continue;
+    files.push(file);
+    let cfg = {};
+    try {
+      cfg = JSON.parse(readFileSync(file, "utf8"));
+    } catch {
+      continue; // 解析失败跳过该文件
+    }
+    for (const [name, conf] of Object.entries(cfg?.servers ?? {})) {
+      if (!conf || typeof conf !== "object") continue;
+      servers[name] = { ...conf, scope, sourceFile: file };
+    }
+  }
+  return { servers, files };
+}
+
+/** server 签名：由 name + command + args 决定（改了命令就需重新批准） */
+export function serverSignature(name, conf) {
+  return createHash("sha1")
+    .update(`${name}|${conf?.command ?? ""}|${JSON.stringify(conf?.args ?? [])}`)
+    .digest("hex")
+    .slice(0, 16);
+}
+
+export function readApprovals(file = DEFAULT_APPROVALS) {
+  if (!existsSync(file)) return {};
+  try {
+    const data = JSON.parse(readFileSync(file, "utf8"));
+    return data && typeof data === "object" ? data : {};
+  } catch {
+    return {};
+  }
+}
+
+export function writeApprovals(data, file = DEFAULT_APPROVALS) {
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, JSON.stringify(data, null, 2), "utf8");
+}
+
+export function isServerApproved(name, conf, file = DEFAULT_APPROVALS) {
+  const rec = readApprovals(file)[name];
+  return !!rec && rec.signature === serverSignature(name, conf);
+}
+
+/** 批准一个 server（记录签名） */
+export function approveServer(name, conf, file = DEFAULT_APPROVALS) {
+  const data = readApprovals(file);
+  const record = {
+    signature: serverSignature(name, conf),
+    command: `${conf?.command ?? ""} ${(conf?.args ?? []).join(" ")}`.trim(),
+    scope: conf?.scope ?? "user",
+    approvedAt: new Date().toISOString(),
+  };
+  data[name] = record;
+  writeApprovals(data, file);
+  return record;
+}
+
+export function revokeServer(name, file = DEFAULT_APPROVALS) {
+  const data = readApprovals(file);
+  if (!data[name]) return false;
+  delete data[name];
+  writeApprovals(data, file);
+  return true;
+}
+
+export function listApprovals(file = DEFAULT_APPROVALS) {
+  return readApprovals(file);
+}
+
+/** 项目级 server 需要显式批准（防止 clone 来的仓库里 mcp.json 自动执行命令） */
+export function needsApproval(conf) {
+  return conf?.scope === "project";
+}
+
+/** 未批准时抛错 */
+export function assertApproved(name, conf, file = DEFAULT_APPROVALS) {
+  if (!needsApproval(conf)) return;
+  if (!isServerApproved(name, conf, file)) {
+    throw new Error(
+      `MCP server「${name}」来自项目配置（${conf.sourceFile}），尚未批准，拒绝连接。` +
+        `确认可信后用 mcp 工具 action=approve 批准。`
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 工具命名空间
+// ---------------------------------------------------------------------------
+
+/** MCP 工具在 agent 侧的名字：mcp__<server>__<tool> */
+export function namespacedToolName(server, tool) {
+  return `mcp__${server}__${tool}`;
+}
+
+/** 解析命名空间；非法返回 null */
+export function parseNamespacedToolName(name) {
+  const m = String(name ?? "").match(/^mcp__(.+?)__(.+)$/);
+  if (!m) return null;
+  return { server: m[1], tool: m[2] };
 }

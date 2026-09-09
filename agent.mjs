@@ -11,6 +11,7 @@ import { loadMemoryContext } from "./memory-files.mjs";
 import { collectAttachments, formatAttachments } from "./attachments.mjs";
 import { drainNotifications } from "./background-tasks.mjs";
 import { createPromptStateTracker } from "./prompt-state.mjs";
+import { createAuditLog } from "./permission-audit.mjs";
 import { loadHooks, resolveHooksFile, runHooks } from "./hooks.mjs";
 import { classifyError } from "./errors.mjs";
 
@@ -100,6 +101,8 @@ export async function runAgent({
   const announcedSkills = new Set();
   /** prompt 状态跟踪（诊断缓存失效 / 上下文抖动） */
   const promptTracker = createPromptStateTracker();
+  /** 权限决策审计 */
+  const audit = createAuditLog();
   while (steps < maxSteps) {
     steps += 1;
 
@@ -181,7 +184,7 @@ export async function runAgent({
         });
         continue;
       }
-      return { content: resp.content, messages: msgs, steps, totalTokens, done: true };
+      return { content: resp.content, messages: msgs, steps, totalTokens, done: true, audit: audit.summary() };
     }
 
     // 工具配对：assistant 消息（含 tool_calls）+ 每个 tool 结果
@@ -196,6 +199,17 @@ export async function runAgent({
         args = {};
       }
       onEvent({ type: "tool", name: tc.function?.name, args });
+
+      // 权限决策审计（规则版分类：allow / ask / deny）
+      const verdict = audit.record(tc.function?.name, args, { cwd });
+      if (verdict.decision !== "allow") {
+        onEvent({
+          type: "permission_decision",
+          tool: tc.function?.name,
+          decision: verdict.decision,
+          reason: verdict.reason,
+        });
+      }
 
       const preHook = runHooks(
         hookConfig,

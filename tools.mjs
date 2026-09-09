@@ -1184,39 +1184,81 @@ export const toolDefs = [
   {
     name: "mcp",
     description:
-      "调用 MCP（Model Context Protocol）server：list_servers 列出已配置 server / list_tools 列出某 server 工具 / call 调用工具。配置：~/.self-agent/mcp.json。",
+      "调用 MCP（Model Context Protocol）server：list_servers 列出已配置 server / list_tools 列出某 server 工具 / " +
+      "call 调用工具 / approve 批准项目级 server / revoke 撤销批准 / list_approvals 查看已批准。" +
+      "配置：用户级 ~/.self-agent/mcp.json + 项目级 <cwd>/.self-agent/mcp.json（后者覆盖前者）。",
     parameters: {
       type: "object",
       properties: {
-        action: { type: "string", enum: ["list_servers", "list_tools", "call"] },
-        server: { type: "string", description: "server 名（list_tools/call 用）" },
+        action: {
+          type: "string",
+          enum: ["list_servers", "list_tools", "call", "approve", "revoke", "list_approvals"],
+        },
+        server: { type: "string", description: "server 名（list_tools/call/approve/revoke 用）" },
         tool: { type: "string", description: "工具名（call 用）" },
         args: { type: "object", description: "工具参数（call 用）" },
       },
       required: ["action"],
     },
     isReadOnly: false,
-    async execute({ action, server, tool, args }) {
-      const { loadMcpConfig, getClient } = await import("./mcp.mjs");
-      const { file, servers } = loadMcpConfig();
+    async execute({ action, server, tool, args }, ctx = {}) {
+      const mcp = await import("./mcp.mjs");
+      const { servers, files } = mcp.loadMcpConfigs(ctx.cwd ?? process.cwd());
+
       if (action === "list_servers") {
         const names = Object.keys(servers);
+        if (!names.length) return { text: `（未配置 MCP server；已查找：${files.join("、") || "默认路径"}）` };
         return {
-          text: names.length
-            ? names.map((n) => `- ${n}: ${servers[n].command} ${(servers[n].args ?? []).join(" ")}`).join("\n")
-            : `（未配置 MCP server；配置文件：${file}）`,
+          text: names
+            .map((n) => {
+              const s = servers[n];
+              const approved = mcp.needsApproval(s)
+                ? mcp.isServerApproved(n, s)
+                  ? "已批准"
+                  : "⚠️ 未批准"
+                : "用户级";
+              return `- ${n} [${s.scope}/${approved}]: ${s.command} ${(s.args ?? []).join(" ")}`;
+            })
+            .join("\n"),
         };
       }
+
+      if (action === "list_approvals") {
+        const data = mcp.listApprovals();
+        const entries = Object.entries(data);
+        return {
+          text: entries.length
+            ? entries.map(([n, r]) => `- ${n}: ${r.command}（${r.approvedAt}）`).join("\n")
+            : "（尚无已批准的 server）",
+        };
+      }
+
+      if (action === "approve" || action === "revoke") {
+        if (!server) return { isError: true, text: `${action} 需要 server 参数` };
+        if (action === "approve") {
+          const conf = servers[server];
+          if (!conf) return { isError: true, text: `未配置 server：${server}` };
+          const rec = mcp.approveServer(server, conf);
+          return { text: `已批准 ${server}（${rec.command}）；签名 ${rec.signature}` };
+        }
+        return mcp.revokeServer(server)
+          ? { text: `已撤销 ${server} 的批准` }
+          : { isError: true, text: `没有 ${server} 的批准记录` };
+      }
+
       if (!server) return { isError: true, text: `${action} 需要 server 参数` };
       const conf = servers[server];
       if (!conf) return { isError: true, text: `未配置 server：${server}` };
+
       try {
-        const client = await getClient(server, conf);
+        const client = await mcp.getClient(server, conf, { enforceApproval: true });
         if (action === "list_tools") {
           const list = await client.listTools();
           return {
             text: list.length
-              ? list.map((x) => `- ${x.name}: ${String(x.description ?? "").slice(0, 90)}`).join("\n")
+              ? list
+                  .map((x) => `- ${x.name}（${mcp.namespacedToolName(server, x.name)}）: ${String(x.description ?? "").slice(0, 90)}`)
+                  .join("\n")
               : "（该 server 无工具）",
           };
         }

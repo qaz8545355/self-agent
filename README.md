@@ -17,6 +17,8 @@
 - **worker 并行**：`subagent` 带 `isolation: "worktree"` 时可在各自副本内并行执行（协调者模式的 worker 隔离）
 - **工具输入校验**：调用前用轻量 JSON Schema 校验参数类型/必填/enum；若工具 schema 未随请求发送，提示模型先用 `tool_search` 加载（移植 `toolExecution`）
 - **prompt 状态诊断**：记录 system / 工具集合 / 工具 schema 哈希，变化时报告原因，用于定位前缀缓存失效与上下文抖动（移植 `promptCacheBreakDetection`）
+- **MCP 多作用域 + 审批**：用户级 `~/.self-agent/mcp.json` 与项目级 `<cwd>/.self-agent/mcp.json` 合并（项目覆盖）；**项目级 server 必须显式批准**才连接（防 clone 来的仓库自动执行命令）；工具名带 `mcp__<server>__<tool>` 命名空间
+- **权限决策审计**：每个工具调用按规则分类为 `allow / ask / deny` 并统计（移植 `yoloClassifier` 的决策思路），CLI 结束时输出审计摘要
 - **命令级只读判定**：bash 命令经配置表 + flag 校验判定是否只读（移植 `readOnlyCommandValidation`），只读命令可参与并行
 - **文件改动历史**：写前自动备份，支持 list / diff / rewind 回滚（移植 `fileHistory`）
 - **32 个内置工具**：`bash`、`read_file`、`write_file`、`edit_file`、`glob`、`grep`、`subagent`、`skill`、`web_fetch`、`todo_write`、`git`、`memory`、`check_binary`、`apply_patch`、`file_history`、`bg_task`、`run_tests`、`env_info`、`diff`、`ask_user`、`plan_mode`、`http_request`、`schedule`、`sleep`、`config`、`tool_search`、`notebook_edit`、`task`、`team`、`code_outline`、`mcp`、`lark_send`
@@ -228,7 +230,9 @@ npm test          # 运行全部测试（tests/run-all.mjs）
 | `background-tasks.test.mjs` | 36 |
 | `tool-validation.test.mjs` | 25 |
 | `prompt-state.test.mjs` | 20 |
-| **合计** | **594** |
+| `mcp-scopes.test.mjs` | 32 |
+| `permission-audit.test.mjs` | 29 |
+| **合计** | **655** |
 
 CI：GitHub Actions（push / PR 自动跑）。
 

@@ -75,6 +75,7 @@ async function main() {
       console.log(`📎 已附加 ${ev.count} 个文件：${ev.refs.join(", ")}${ev.skipped ? `（跳过 ${ev.skipped} 个）` : ""}`);
     else if (ev.type === "bg_notifications") console.log(`📬 ${ev.count} 个后台任务完成`);
     else if (ev.type === "prompt_state_changed") console.log(`🧮 prompt 状态变化：${ev.reasons.join("；")}`);
+    else if (ev.type === "permission_decision") console.log(`🔐 ${ev.tool} → ${ev.decision}（${ev.reason}）`);
     else if (ev.type === "assistant" && ev.content && !opts.stream) console.log(`\n💭 ${ev.content.slice(0, 400)}`);
     else if (ev.type === "tool") console.log(`\n🔧 ${ev.name} ${JSON.stringify(ev.args).slice(0, 200)}`);
     else if (ev.type === "tool_result") {
@@ -102,6 +103,10 @@ async function main() {
     /* 清理失败不影响主流程 */
   }
   console.log(`\n[session ${sessionId}] steps=${result.steps} tokens≈${result.totalTokens} → ${file}`);
+  if (result.audit && (result.audit.counts.ask || result.audit.counts.deny)) {
+    const c = result.audit.counts;
+    console.log(`[权限审计] allow=${c.allow} ask=${c.ask} deny=${c.deny}`);
+  }
 }
 
 main().catch((e) => {
