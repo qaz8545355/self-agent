@@ -1,0 +1,16 @@
+{
+  "at": "2026-09-09T17:17:38.510Z",
+  "passed": 1,
+  "total": 1,
+  "records": [
+    {
+      "case": "16-multi-bug",
+      "passed": true,
+      "detail": "5 处 bug 全部修复，且测试文件未被改动",
+      "steps": 13,
+      "tokens": 72077,
+      "durationMs": 64874,
+      "error": null
+    }
+  ]
+}

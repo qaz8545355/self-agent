@@ -1,0 +1,16 @@
+{
+  "at": "2026-09-09T17:18:49.625Z",
+  "passed": 1,
+  "total": 1,
+  "records": [
+    {
+      "case": "17-root-cause",
+      "passed": true,
+      "detail": "根因（toCents 舍入）已修复，全部测试通过",
+      "steps": 11,
+      "tokens": 74497,
+      "durationMs": 70801,
+      "error": null
+    }
+  ]
+}
