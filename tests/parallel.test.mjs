@@ -13,6 +13,16 @@ t("edit_file 不安全", isConcurrencySafe("edit_file") === false);
 t("bash 不安全", isConcurrencySafe("bash") === false);
 t("未知工具不安全", isConcurrencySafe("no-such") === false);
 
+// 1.5) bash 命令级只读判定（移植 Claude Code readOnlyCommandValidation）
+const bashCall = (cmd) => ({ function: { name: "bash", arguments: JSON.stringify({ command: cmd }) } });
+t("bash 只读命令（git status）可并行", isConcurrencySafe(bashCall("git status")) === true);
+t("bash 只读命令（ls -la）可并行", isConcurrencySafe(bashCall("ls -la")) === true);
+t("bash 只读命令（rg -n）可并行", isConcurrencySafe(bashCall("rg -n foo src")) === true);
+t("bash 写命令不安全", isConcurrencySafe(bashCall("rm -rf /tmp/x")) === false);
+t("bash 管道命令不安全", isConcurrencySafe(bashCall("cat a | grep b")) === false);
+t("bash 参数非法 JSON 不安全", isConcurrencySafe({ function: { name: "bash", arguments: "not-json" } }) === false);
+t("bash 无 command 字段不安全", isConcurrencySafe({ function: { name: "bash", arguments: "{}" } }) === false);
+
 // 2) 分区逻辑
 const mk = (name) => ({ function: { name } });
 const calls = [mk("read_file"), mk("grep"), mk("write_file"), mk("glob"), mk("read_file")];
@@ -35,6 +45,13 @@ t("全只读合并为单批", rb.length === 1 && rb[0].parallel === true && rb[0
 
 // 5) 空输入
 t("空输入返回空", partitionToolCalls([]).length === 0);
+
+// 5.5) 只读 bash 参与并行分区
+const mixed = [mk("read_file"), bashCall("git log --oneline"), bashCall("rm -rf /tmp/x"), mk("grep")];
+const mb = partitionToolCalls(mixed);
+t("只读 bash 与只读工具同批并行", mb[0].parallel === true && mb[0].calls.length === 2, `→ 批1 ${mb[0]?.calls.length}`);
+t("写 bash 独占一批", mb[1].parallel === false && mb[1].calls.length === 1);
+t("后续只读工具再成批", mb[2].parallel === true && mb[2].calls.length === 1);
 
 // 6) 性能：3 个 300ms 任务，并行应显著快于串行
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

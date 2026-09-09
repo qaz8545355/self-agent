@@ -9,7 +9,9 @@
 
 - **工具契约**：每个工具声明 `name/description/parameters/isReadOnly/execute`
 - **并发执行**：连续的只读工具并行、写工具串行（借鉴 Claude Code `toolOrchestration`），实测 3 倍提速
-- **30 个内置工具**：`bash`、`read_file`、`write_file`、`edit_file`、`glob`、`grep`、`subagent`、`skill`、`web_fetch`、`todo_write`、`git`、`memory`、`check_binary`、`apply_patch`、`run_tests`、`env_info`、`diff`、`ask_user`、`plan_mode`、`http_request`、`schedule`、`sleep`、`config`、`tool_search`、`notebook_edit`、`task`、`team`、`code_outline`、`mcp`、`lark_send`
+- **命令级只读判定**：bash 命令经配置表 + flag 校验判定是否只读（移植 `readOnlyCommandValidation`），只读命令可参与并行
+- **文件改动历史**：写前自动备份，支持 list / diff / rewind 回滚（移植 `fileHistory`）
+- **31 个内置工具**：`bash`、`read_file`、`write_file`、`edit_file`、`glob`、`grep`、`subagent`、`skill`、`web_fetch`、`todo_write`、`git`、`memory`、`check_binary`、`apply_patch`、`file_history`、`run_tests`、`env_info`、`diff`、`ask_user`、`plan_mode`、`http_request`、`schedule`、`sleep`、`config`、`tool_search`、`notebook_edit`、`task`、`team`、`code_outline`、`mcp`、`lark_send`
 - **安全层**：危险路径/命令拦截（`rm -rf /`、`chmod 777`、写系统目录等）、heredoc 剥离防误判
 - **上下文压缩**：四层流水线（L1 清旧工具结果 → L2 折叠旧回复 → L3 整体摘要），逐层触发
 - **子代理**：独立上下文、结果单点回传、递归防护、**worktree 隔离**（`isolation: "worktree"`）
@@ -196,7 +198,7 @@ npm test          # 运行全部测试（tests/run-all.mjs）
 | `skills.test.mjs` | 12（无技能目录时自动跳过） |
 | `subagent.test.mjs` | 4 |
 | `session.test.mjs` | 5 |
-| `parallel.test.mjs` | 16 |
+| `parallel.test.mjs` | 26 |
 | `apply-patch.test.mjs` | 13 |
 | `collapse.test.mjs` | 13 |
 | `worktree.test.mjs` | 10 |
@@ -208,7 +210,9 @@ npm test          # 运行全部测试（tests/run-all.mjs）
 | `code-outline.test.mjs` | 12 |
 | `mcp.test.mjs` | 10 |
 | `tool-select.test.mjs` | 11 |
-| **合计** | **274** |
+| `readonly-commands.test.mjs` | 71 |
+| `file-history.test.mjs` | 21 |
+| **合计** | **376** |
 
 CI：GitHub Actions（push / PR 自动跑）。
 

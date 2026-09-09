@@ -10,6 +10,8 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSy
 import os from "node:os";
 import path from "node:path";
 import { checkCommand, checkWritePath } from "./safety.mjs";
+import { isReadOnlyCommand } from "./readonly-commands.mjs";
+import { trackEdit, listVersions, rewind, diffStats, historyRoot } from "./file-history.mjs";
 
 const MAX_OUTPUT = 8000;
 /** 会话级状态（任务清单等） */
@@ -109,6 +111,7 @@ export const toolDefs = [
       const check = checkWritePath(full);
       if (!check.allow) return { isError: true, text: `⛔ 已拦截：${check.reason}` };
       mkdirSync(path.dirname(full), { recursive: true });
+      trackEdit(full);
       writeFileSync(full, content, "utf8");
       return { text: `已写入 ${full}（${content.length} 字符）` };
     },
@@ -133,6 +136,7 @@ export const toolDefs = [
       const count = src.split(old_string).length - 1;
       if (count === 0) return { isError: true, text: "old_string 未找到" };
       if (count > 1) return { isError: true, text: `old_string 出现 ${count} 次，不唯一` };
+      trackEdit(full);
       writeFileSync(full, src.replace(old_string, new_string), "utf8");
       return { text: `已编辑 ${full}` };
     },
@@ -510,6 +514,7 @@ export const toolDefs = [
       const written = [];
       try {
         for (const x of staged) {
+          trackEdit(x.full);
           writeFileSync(x.full, x.updated, "utf8");
           written.push(x);
         }
@@ -529,6 +534,50 @@ export const toolDefs = [
           .map((x) => `- ${path.relative(cwd, x.full)}`)
           .join("\n")}`,
       };
+    },
+  },
+  {
+    name: "file_history",
+    description:
+      "查看/回滚文件改动历史。每次 write_file / edit_file / apply_patch 之前会自动备份原内容（存于 ~/.self-agent/file-history）。" +
+      "action：list 列出版本、diff 对比某版本与当前、rewind 回滚到某版本。",
+    parameters: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "目标文件路径" },
+        action: { type: "string", enum: ["list", "diff", "rewind"], description: "操作类型" },
+        version: { type: "number", description: "diff / rewind 需要的版本号" },
+      },
+      required: ["path", "action"],
+    },
+    isReadOnly: false,
+    async execute({ path: p, action, version }, ctx = {}) {
+      const full = path.resolve(ctx.cwd ?? process.cwd(), p);
+
+      if (action === "list") {
+        const vs = listVersions(full);
+        if (!vs.length) return { text: `${p} 没有历史版本（历史目录：${historyRoot()}）` };
+        return {
+          text: vs
+            .map((v) => `v${v.version}  ${v.time}  ${v.existed ? `${v.size} 字节` : "（当时不存在）"}`)
+            .join("\n"),
+        };
+      }
+
+      if (action === "diff") {
+        const d = diffStats(full, version);
+        if (!d.ok) return { isError: true, text: d.error };
+        return {
+          text: `v${d.version}：备份 ${d.backupLines} 行 → 当前 ${d.currentLines} 行${d.changed ? "（已变化）" : "（内容相同）"}`,
+        };
+      }
+
+      if (action === "rewind") {
+        const r = rewind(full, version);
+        return r.ok ? { text: r.detail } : { isError: true, text: r.error };
+      }
+
+      return { isError: true, text: `未知 action：${action}（可选 list / diff / rewind）` };
     },
   },
   {
@@ -1151,10 +1200,28 @@ export async function runTool(name, args, ctx) {
   }
 }
 
-/** 工具是否并发安全（只读工具可并行；写工具必须串行） */
-export function isConcurrencySafe(name) {
+/**
+ * 工具调用是否并发安全（只读工具可并行；写工具必须串行）。
+ * - 工具级：isReadOnly === true 直接放行
+ * - bash：命令级判定（移植 Claude Code readOnlyCommandValidation），只有只读命令才可并行
+ * 兼容旧签名：传字符串（工具名）时按工具级判定。
+ */
+export function isConcurrencySafe(tc) {
+  const name = typeof tc === "string" ? tc : tc?.function?.name;
   const def = toolDefs.find((t) => t.name === name);
-  return def?.isReadOnly === true;
+  if (!def) return false;
+  if (def.isReadOnly === true) return true;
+
+  if (name === "bash") {
+    try {
+      const raw = tc?.function?.arguments;
+      const args = typeof raw === "string" ? JSON.parse(raw) : raw;
+      if (args && typeof args.command === "string") return isReadOnlyCommand(args.command);
+    } catch {
+      /* 解析失败 → 视为不安全 */
+    }
+  }
+  return false;
 }
 
 /**
@@ -1166,7 +1233,7 @@ export function partitionToolCalls(calls = [], isSafe = isConcurrencySafe) {
   const batches = [];
   let parallel = [];
   for (const tc of calls) {
-    if (isSafe(tc?.function?.name)) {
+    if (isSafe(tc)) {
       parallel.push(tc);
     } else {
       if (parallel.length) {
