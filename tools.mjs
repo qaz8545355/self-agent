@@ -1179,3 +1179,45 @@ export function partitionToolCalls(calls = [], isSafe = isConcurrencySafe) {
   if (parallel.length) batches.push({ parallel: true, calls: parallel });
   return batches;
 }
+
+/** 核心工具：始终提供（日常编码刚需） */
+export const CORE_TOOLS = [
+  "bash", "read_file", "write_file", "edit_file", "glob", "grep", "apply_patch",
+  "subagent", "todo_write", "skill", "env_info", "tool_search", "check_binary",
+  "code_outline", "run_tests", "diff", "git",
+];
+
+/** 任务关键词 → 附加工具（借鉴 Claude Code ToolSearch 的按需发现思路） */
+const TOOL_RULES = [
+  { re: /网页|抓取|爬|http|接口|api|搜索|下载/i, tools: ["web_fetch", "http_request"] },
+  { re: /记忆|之前|上次|历史|偏好/i, tools: ["memory"] },
+  { re: /计划|方案|设计|规划|评审/i, tools: ["plan_mode"] },
+  { re: /确认|问我|选择|决定|要不要/i, tools: ["ask_user"] },
+  { re: /飞书|通知|发消息|推送/i, tools: ["lark_send"] },
+  { re: /notebook|jupyter|ipynb|单元格/i, tools: ["notebook_edit"] },
+  { re: /定时|每天|每周|cron|周期|提醒/i, tools: ["schedule"] },
+  { re: /配置|config|设置/i, tools: ["config"] },
+  { re: /等待|轮询|sleep|稍等/i, tools: ["sleep"] },
+  { re: /待办|任务清单|task/i, tools: ["task"] },
+  { re: /团队|成员|分工/i, tools: ["team"] },
+  { re: /mcp|协议|外部工具/i, tools: ["mcp"] },
+];
+
+/**
+ * 按任务挑选工具集：核心工具 + 关键词命中的附加工具。
+ * 目的：减少每步 schema 的 token 开销（30 个全量约占 3300 tokens/步）。
+ * @param {string} task 任务描述
+ * @param {{extra?:string[]}} [opts]
+ * @returns {Array} 工具定义数组
+ */
+export function selectToolsForTask(task = "", { extra = [] } = {}) {
+  const text = String(task ?? "");
+  const selected = new Set(CORE_TOOLS);
+  for (const r of TOOL_RULES) {
+    if (r.re.test(text)) for (const t of r.tools) selected.add(t);
+  }
+  for (const t of extra) selected.add(t);
+  const defs = toolDefs.filter((t) => selected.has(t.name));
+  // 兜底：至少给核心工具
+  return defs.length ? defs : toolDefs;
+}

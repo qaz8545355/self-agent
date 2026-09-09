@@ -4,7 +4,7 @@
  * 流程：模型 → 工具调用 → 回填 → 继续，直到无工具调用或达到步数上限。
  */
 import { chat, chatStream } from "./llm.mjs";
-import { toOpenAITools, runTool, partitionToolCalls } from "./tools.mjs";
+import { toOpenAITools, runTool, partitionToolCalls, selectToolsForTask } from "./tools.mjs";
 import { compactIfNeeded, estimateTokens } from "./context.mjs";
 import { skillsCatalog } from "./skills.mjs";
 import { loadHooks, resolveHooksFile, runHooks } from "./hooks.mjs";
@@ -62,6 +62,10 @@ export async function runAgent({
     msgs.push({ role: "user", content: task + injected });
   }
 
+  // 按任务挑选工具集（减少每步 schema 开销）
+  const activeTools = selectToolsForTask(task ?? msgs.filter((m) => m.role === "user").map((m) => m.content).join(" "));
+  onEvent({ type: "tools_selected", count: activeTools.length, names: activeTools.map((t) => t.name) });
+
   let steps = 0;
   let totalTokens = 0;
   let stopBlocks = 0;
@@ -77,13 +81,13 @@ export async function runAgent({
       resp = stream
         ? await chatStream({
             messages: msgs,
-            tools: toOpenAITools(),
+            tools: toOpenAITools(activeTools),
             model,
             onDelta: (text) => onEvent({ type: "delta", text }),
           })
         : await chat({
             messages: msgs,
-            tools: toOpenAITools(),
+            tools: toOpenAITools(activeTools),
             model,
             onRetry: (info) => onEvent({ type: "retry", ...info }),
           });
