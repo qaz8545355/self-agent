@@ -574,6 +574,66 @@ export const toolDefs = [
     },
   },
   {
+    name: "env_info",
+    description:
+      "返回运行环境信息（操作系统 / Node 版本 / 工作目录 / git 状态 / 常用命令可用性），用于快速了解环境，避免盲目假设。",
+    parameters: { type: "object", properties: {} },
+    isReadOnly: true,
+    async execute(_args, ctx = {}) {
+      const cwd = ctx.cwd ?? process.cwd();
+      const lines = [
+        `平台: ${os.platform()} ${os.release()} (${os.arch()})`,
+        `Node: ${process.version}`,
+        `工作目录: ${cwd}`,
+        `目录存在: ${existsSync(cwd) ? "是" : "否"}`,
+      ];
+      try {
+        const branch = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+          cwd,
+          encoding: "utf8",
+          timeout: 5000,
+        }).trim();
+        const status = execFileSync("git", ["status", "--porcelain"], { cwd, encoding: "utf8", timeout: 5000 }).trim();
+        lines.push(`Git: 分支 ${branch}${status ? `（${status.split("\n").length} 个未提交改动）` : "（工作区干净）"}`);
+      } catch {
+        lines.push("Git: 非仓库或不可用");
+      }
+      const { isBinaryInstalled, COMMON_BINARIES } = await import("./binary-check.mjs");
+      const available = COMMON_BINARIES.filter((c) => isBinaryInstalled(c));
+      lines.push(`可用命令: ${available.join(", ") || "（无）"}`);
+      return { text: lines.join("\n") };
+    },
+  },
+  {
+    name: "diff",
+    description: "比较两个文件的差异，输出 unified diff（适合改动前后对比、跨版本比对）。",
+    parameters: {
+      type: "object",
+      properties: {
+        file_a: { type: "string", description: "旧文件路径" },
+        file_b: { type: "string", description: "新文件路径" },
+      },
+      required: ["file_a", "file_b"],
+    },
+    isReadOnly: true,
+    async execute({ file_a, file_b }, ctx = {}) {
+      const cwd = ctx.cwd ?? process.cwd();
+      const a = path.resolve(cwd, file_a);
+      const b = path.resolve(cwd, file_b);
+      if (!existsSync(a)) return { isError: true, text: `文件不存在：${file_a}` };
+      if (!existsSync(b)) return { isError: true, text: `文件不存在：${file_b}` };
+      try {
+        const out = execFileSync("diff", ["-u", a, b], { encoding: "utf8", timeout: 20_000 });
+        return { text: out.trim() || "（无差异）" };
+      } catch (e) {
+        // diff 发现差异时退出码为 1，属正常
+        const out = String(e.stdout ?? "");
+        if (e.status === 1 && out) return { text: truncate(out) };
+        return { isError: true, text: `diff 失败：${e.message}` };
+      }
+    },
+  },
+  {
     name: "lark_send",
     description:
       "通过飞书 bot 发送文本消息（默认发给用户私聊，可用 chat_id 指定群）。适合把长任务的结果推送给用户。",
