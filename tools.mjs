@@ -11,6 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { checkCommand, checkWritePath } from "./safety.mjs";
 import { isReadOnlyCommand } from "./readonly-commands.mjs";
+import { validateToolInput, buildSchemaNotSentHint, classifyToolError } from "./tool-validation.mjs";
 import { trackEdit, listVersions, rewind, diffStats, historyRoot } from "./file-history.mjs";
 
 const MAX_OUTPUT = 8000;
@@ -1271,13 +1272,24 @@ export function toOpenAITools(defs = toolDefs) {
 }
 
 /** 按名字执行工具 */
-export async function runTool(name, args, ctx) {
+export async function runTool(name, args, ctx = {}) {
   const def = toolDefs.find((t) => t.name === name);
-  if (!def) return { isError: true, text: `未知工具：${name}` };
+  if (!def) {
+    const hint = buildSchemaNotSentHint(name, ctx.activeToolNames);
+    return { isError: true, text: `未知工具：${name}${hint ?? ""}` };
+  }
+
+  // 参数校验（移植 toolExecution 的 inputSchema 校验 + schema 未发送提示）
+  const v = validateToolInput(def.parameters, args ?? {});
+  if (!v.ok) {
+    const hint = buildSchemaNotSentHint(name, ctx.activeToolNames);
+    return { isError: true, text: `参数校验失败：${v.errors.join("；")}${hint ?? ""}` };
+  }
+
   try {
     return await def.execute(args ?? {}, ctx);
   } catch (e) {
-    return { isError: true, text: `工具异常：${e.message}` };
+    return { isError: true, text: `工具异常（${classifyToolError(e)}）：${e.message}` };
   }
 }
 

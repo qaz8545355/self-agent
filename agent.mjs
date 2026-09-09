@@ -10,6 +10,7 @@ import { skillsCatalog, activateConditionalSkillsForPaths } from "./skills.mjs";
 import { loadMemoryContext } from "./memory-files.mjs";
 import { collectAttachments, formatAttachments } from "./attachments.mjs";
 import { drainNotifications } from "./background-tasks.mjs";
+import { createPromptStateTracker } from "./prompt-state.mjs";
 import { loadHooks, resolveHooksFile, runHooks } from "./hooks.mjs";
 import { classifyError } from "./errors.mjs";
 
@@ -87,6 +88,7 @@ export async function runAgent({
 
   // 按任务挑选工具集（减少每步 schema 开销）
   const activeTools = selectToolsForTask(task ?? msgs.filter((m) => m.role === "user").map((m) => m.content).join(" "));
+  const activeToolNames = activeTools.map((t) => t.name);
   onEvent({ type: "tools_selected", count: activeTools.length, names: activeTools.map((t) => t.name) });
 
   let steps = 0;
@@ -96,6 +98,8 @@ export async function runAgent({
   const stallDetector = createStallDetector({ limit: stallLimit });
   /** 已提示过的条件技能，避免重复注入 */
   const announcedSkills = new Set();
+  /** prompt 状态跟踪（诊断缓存失效 / 上下文抖动） */
+  const promptTracker = createPromptStateTracker();
   while (steps < maxSteps) {
     steps += 1;
 
@@ -115,6 +119,17 @@ export async function runAgent({
     // 上下文压缩（仅超阈值时触发，先裁剪旧工具结果，再整体摘要）
     const compacted = await compactIfNeeded(msgs, { contextWindow, thresholdRatio, model, onEvent });
     if (compacted.compacted) msgs = compacted.messages;
+
+    // prompt 状态诊断：system / 工具集合 / 模型 / 工具 schema 变化会影响前缀缓存
+    const stateDiff = promptTracker.observe({
+      system: msgs.find((m) => m.role === "system")?.content ?? "",
+      tools: activeTools,
+      messages: msgs,
+      model: model ?? "",
+    });
+    if (stateDiff.changed && stateDiff.reasons[0] !== "首次快照") {
+      onEvent({ type: "prompt_state_changed", reasons: stateDiff.reasons });
+    }
 
     let resp;
     try {
@@ -192,7 +207,7 @@ export async function runAgent({
       if (preHook.blocked) {
         result = { isError: true, text: `⛔ 被 PreToolUse hook 阻止：${preHook.outputs.join("；") || "无原因"}` };
       } else {
-        result = await runTool(tc.function?.name, args, { cwd, depth, model });
+        result = await runTool(tc.function?.name, args, { cwd, depth, model, activeToolNames });
         const postHook = runHooks(
           hookConfig,
           "PostToolUse",

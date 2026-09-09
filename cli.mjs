@@ -74,6 +74,7 @@ async function main() {
     else if (ev.type === "attachments_loaded")
       console.log(`📎 已附加 ${ev.count} 个文件：${ev.refs.join(", ")}${ev.skipped ? `（跳过 ${ev.skipped} 个）` : ""}`);
     else if (ev.type === "bg_notifications") console.log(`📬 ${ev.count} 个后台任务完成`);
+    else if (ev.type === "prompt_state_changed") console.log(`🧮 prompt 状态变化：${ev.reasons.join("；")}`);
     else if (ev.type === "assistant" && ev.content && !opts.stream) console.log(`\n💭 ${ev.content.slice(0, 400)}`);
     else if (ev.type === "tool") console.log(`\n🔧 ${ev.name} ${JSON.stringify(ev.args).slice(0, 200)}`);
     else if (ev.type === "tool_result") {
