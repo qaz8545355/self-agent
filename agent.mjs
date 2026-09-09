@@ -39,6 +39,7 @@ export async function runAgent({
   cwd = process.cwd(),
   model,
   maxSteps = 100,
+  stallLimit = 3,
   contextWindow = 1_050_000,
   thresholdRatio = 0.65,
   depth = 0,
@@ -69,6 +70,8 @@ export async function runAgent({
   let steps = 0;
   let totalTokens = 0;
   let stopBlocks = 0;
+  // 卡住检测：连续 N 步「无文件改动 + 工具调用/结果重复」则提前终止（stallLimit=0 关闭）
+  const stallDetector = createStallDetector({ limit: stallLimit });
   while (steps < maxSteps) {
     steps += 1;
 
@@ -192,6 +195,21 @@ export async function runAgent({
       const r = toolResults.get(tc.id) ?? { isError: true, text: "工具结果丢失" };
       msgs.push({ role: "tool", tool_call_id: tc.id, content: r.text });
     }
+
+    // 卡住检测：没有文件改动且工具调用/结果与之前某步完全相同 → 空转，提前终止
+    const stall = stallDetector.observe(calls, toolResults);
+    if (stall.stalled) {
+      onEvent({ type: "stalled", streak: stall.streak });
+      return {
+        content: `（连续 ${stall.streak} 步无进展：没有文件改动，且工具调用与结果重复，已提前终止）`,
+        messages: msgs,
+        steps,
+        totalTokens,
+        done: false,
+        aborted: true,
+        stalled: true,
+      };
+    }
   }
 
   return {
@@ -201,5 +219,51 @@ export async function runAgent({
     totalTokens,
     done: false,
     aborted: true,
+  };
+}
+
+/** 写类工具：成功执行才算「有改动」 */
+const WRITE_TOOL_NAMES = new Set(["write_file", "edit_file", "apply_patch", "notebook_edit"]);
+
+/**
+ * 卡住检测器：连续 N 步满足「无文件改动 + 工具调用/结果与之前某步完全相同」则判定卡住。
+ *
+ * 为什么这样判：
+ * - 只读探索（结果每次不同）不会误判
+ * - A/B/A/B 交替空转会被判出（第 N 次重复时触发）
+ * - 写工具失败也算「无改动」，反复尝试同样的失败写入同样会被判出
+ *
+ * @param {{limit?: number}} [opts] 连续重复步数阈值：limit=3 表示同一操作重复 3 次（共执行 4 次）后终止；limit=0 关闭检测
+ */
+export function createStallDetector({ limit = 3 } = {}) {
+  const seen = new Set();
+  let streak = 0;
+
+  const signatureOf = (calls, results) =>
+    calls
+      .map((tc) => {
+        const r = results.get(tc.id);
+        const status = r?.isError ? "ERR" : "OK";
+        return `${tc.function?.name ?? "?"}:${tc.function?.arguments ?? ""}=>${status}:${String(r?.text ?? "").slice(0, 2000)}`;
+      })
+      .join("\n");
+
+  return {
+    /** 观察一步：calls 为模型本步的工具调用，results 为 Map<callId, {isError,text}> */
+    observe(calls, results) {
+      const wrote = calls.some((tc) => WRITE_TOOL_NAMES.has(tc.function?.name) && !results.get(tc.id)?.isError);
+      const signature = signatureOf(calls, results);
+      const repeated = seen.has(signature);
+      seen.add(signature);
+
+      if (wrote) streak = 0;
+      else if (repeated) streak += 1;
+      else streak = 0;
+
+      return { stalled: limit > 0 && streak >= limit, streak, repeated, signature };
+    },
+    get streak() {
+      return streak;
+    },
   };
 }
