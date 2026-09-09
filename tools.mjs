@@ -532,6 +532,48 @@ export const toolDefs = [
     },
   },
   {
+    name: "run_tests",
+    description:
+      "自动检测并运行项目测试（npm test / node --test / pytest / go test / cargo test），返回通过/失败摘要；可传 command 覆盖检测。",
+    parameters: {
+      type: "object",
+      properties: {
+        command: { type: "string", description: "可选：自定义测试命令（覆盖自动检测）" },
+        timeout_ms: { type: "number", description: "超时毫秒数（默认 180000）" },
+      },
+    },
+    isReadOnly: false,
+    async execute({ command, timeout_ms }, ctx = {}) {
+      const cwd = ctx.cwd ?? process.cwd();
+      const { detectTestCommand, summarizeTestOutput } = await import("./run-tests.mjs");
+      const detected = command ? { command, kind: "custom" } : detectTestCommand(cwd);
+      if (!detected) {
+        return {
+          isError: true,
+          text: "未检测到测试配置（package.json / pytest / go.mod / Cargo.toml）；可传 command 指定测试命令",
+        };
+      }
+      const timeout = Number(timeout_ms) || 180_000;
+      try {
+        const out = execFileSync("/bin/bash", ["-c", detected.command], {
+          cwd,
+          encoding: "utf8",
+          timeout,
+          maxBuffer: 8 * 1024 * 1024,
+        });
+        const sum = summarizeTestOutput(detected.kind, out);
+        return { text: `测试通过 ✅（${detected.command}）\n${sum.summary}\n\n${truncate(out, 3000)}` };
+      } catch (e) {
+        const out = `${e.stdout ?? ""}${e.stderr ?? ""}`;
+        const sum = summarizeTestOutput(detected.kind, out);
+        return {
+          isError: true,
+          text: `测试失败 ❌（${detected.command}，exit=${e.status ?? "?"}）\n${sum.summary}\n\n${truncate(out, 3000)}`,
+        };
+      }
+    },
+  },
+  {
     name: "lark_send",
     description:
       "通过飞书 bot 发送文本消息（默认发给用户私聊，可用 chat_id 指定群）。适合把长任务的结果推送给用户。",
