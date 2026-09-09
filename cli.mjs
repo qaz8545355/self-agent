@@ -65,6 +65,9 @@ async function main() {
 
   const onEvent = (ev) => {
     if (ev.type === "delta") process.stdout.write(ev.text);
+    else if (ev.type === "parallel_batch") console.log(`⚡ 并行执行 ${ev.count} 个只读工具`);
+    else if (ev.type === "retry") console.log(`🔄 重试（${ev.kind}，等待 ${ev.waitMs}ms）`);
+    else if (ev.type === "force_compact") console.log(`📦 上下文超限，强制压缩后重试`);
     else if (ev.type === "assistant" && ev.content && !opts.stream) console.log(`\n💭 ${ev.content.slice(0, 400)}`);
     else if (ev.type === "tool") console.log(`\n🔧 ${ev.name} ${JSON.stringify(ev.args).slice(0, 200)}`);
     else if (ev.type === "tool_result") {

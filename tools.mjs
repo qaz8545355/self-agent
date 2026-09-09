@@ -461,3 +461,32 @@ export async function runTool(name, args, ctx) {
     return { isError: true, text: `工具异常：${e.message}` };
   }
 }
+
+/** 工具是否并发安全（只读工具可并行；写工具必须串行） */
+export function isConcurrencySafe(name) {
+  const def = toolDefs.find((t) => t.name === name);
+  return def?.isReadOnly === true;
+}
+
+/**
+ * 把工具调用分批（移植 Claude Code toolOrchestration 的 partitionToolCalls）：
+ *   连续的只读调用合并为一个并行批；写调用独占一批（顺序屏障）。
+ * @returns {Array<{parallel:boolean, calls:Array}>}
+ */
+export function partitionToolCalls(calls = [], isSafe = isConcurrencySafe) {
+  const batches = [];
+  let parallel = [];
+  for (const tc of calls) {
+    if (isSafe(tc?.function?.name)) {
+      parallel.push(tc);
+    } else {
+      if (parallel.length) {
+        batches.push({ parallel: true, calls: parallel });
+        parallel = [];
+      }
+      batches.push({ parallel: false, calls: [tc] });
+    }
+  }
+  if (parallel.length) batches.push({ parallel: true, calls: parallel });
+  return batches;
+}

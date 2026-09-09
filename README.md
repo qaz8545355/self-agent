@@ -8,6 +8,7 @@
 ## 特性
 
 - **工具契约**：每个工具声明 `name/description/parameters/isReadOnly/execute`
+- **并发执行**：连续的只读工具并行、写工具串行（借鉴 Claude Code `toolOrchestration`），实测 3 倍提速
 - **14 个内置工具**：`bash`、`read_file`、`write_file`、`edit_file`、`glob`、`grep`、`subagent`、`skill`、`web_fetch`、`todo_write`、`git`、`memory`、`check_binary`、`lark_send`
 - **安全层**：危险路径/命令拦截（`rm -rf /`、`chmod 777`、写系统目录等）、heredoc 剥离防误判
 - **上下文压缩**：token 估算 + 两层策略（L1 裁剪旧工具结果 / L2 整体摘要）
@@ -180,7 +181,8 @@ npm test          # 运行全部测试（tests/run-all.mjs）
 | `skills.test.mjs` | 12（无技能目录时自动跳过） |
 | `subagent.test.mjs` | 4 |
 | `session.test.mjs` | 5 |
-| **合计** | **139** |
+| `parallel.test.mjs` | 16 |
+| **合计** | **155** |
 
 CI：GitHub Actions（push / PR 自动跑）。
 

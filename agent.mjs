@@ -4,7 +4,7 @@
  * 流程：模型 → 工具调用 → 回填 → 继续，直到无工具调用或达到步数上限。
  */
 import { chat, chatStream } from "./llm.mjs";
-import { toOpenAITools, runTool } from "./tools.mjs";
+import { toOpenAITools, runTool, partitionToolCalls } from "./tools.mjs";
 import { compactIfNeeded, estimateTokens } from "./context.mjs";
 import { skillsCatalog } from "./skills.mjs";
 import { loadHooks, resolveHooksFile, runHooks } from "./hooks.mjs";
@@ -127,7 +127,9 @@ export async function runAgent({
 
     // 工具配对：assistant 消息（含 tool_calls）+ 每个 tool 结果
     msgs.push({ role: "assistant", content: resp.content ?? "", tool_calls: calls });
-    for (const tc of calls) {
+
+    // 单个工具执行（含 Pre/Post hook）
+    const executeOne = async (tc) => {
       let args = {};
       try {
         args = JSON.parse(tc.function?.arguments || "{}");
@@ -136,7 +138,6 @@ export async function runAgent({
       }
       onEvent({ type: "tool", name: tc.function?.name, args });
 
-      // PreToolUse hook：可阻止工具执行
       const preHook = runHooks(
         hookConfig,
         "PreToolUse",
@@ -148,7 +149,6 @@ export async function runAgent({
         result = { isError: true, text: `⛔ 被 PreToolUse hook 阻止：${preHook.outputs.join("；") || "无原因"}` };
       } else {
         result = await runTool(tc.function?.name, args, { cwd, depth, model });
-        // PostToolUse hook：可附加反馈
         const postHook = runHooks(
           hookConfig,
           "PostToolUse",
@@ -169,7 +169,24 @@ export async function runAgent({
         }
       }
       onEvent({ type: "tool_result", name: tc.function?.name, isError: !!result.isError, text: result.text });
-      msgs.push({ role: "tool", tool_call_id: tc.id, content: result.text });
+      return result;
+    };
+
+    // 分区执行：连续的只读调用并行，写调用串行（借鉴 Claude Code toolOrchestration）
+    const toolResults = new Map();
+    for (const batch of partitionToolCalls(calls)) {
+      if (batch.parallel && batch.calls.length > 1) {
+        onEvent({ type: "parallel_batch", count: batch.calls.length });
+        const settled = await Promise.all(batch.calls.map(async (tc) => [tc.id, await executeOne(tc)]));
+        for (const [id, r] of settled) toolResults.set(id, r);
+      } else {
+        for (const tc of batch.calls) toolResults.set(tc.id, await executeOne(tc));
+      }
+    }
+    // 按原始顺序回填，保持工具配对不变量
+    for (const tc of calls) {
+      const r = toolResults.get(tc.id) ?? { isError: true, text: "工具结果丢失" };
+      msgs.push({ role: "tool", tool_call_id: tc.id, content: r.text });
     }
   }
 
