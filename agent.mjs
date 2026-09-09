@@ -7,6 +7,7 @@ import { chat, chatStream } from "./llm.mjs";
 import { toOpenAITools, runTool, partitionToolCalls, selectToolsForTask } from "./tools.mjs";
 import { compactIfNeeded, estimateTokens } from "./context.mjs";
 import { skillsCatalog } from "./skills.mjs";
+import { loadMemoryContext } from "./memory-files.mjs";
 import { loadHooks, resolveHooksFile, runHooks } from "./hooks.mjs";
 import { classifyError } from "./errors.mjs";
 
@@ -48,8 +49,14 @@ export async function runAgent({
 } = {}) {
   let msgs = [...messages];
   if (!msgs.some((m) => m.role === "system")) {
-    const systemContent = `${SYSTEM_PROMPT}\n\n## 可用技能\n${skillsCatalog()}\n\n需要某个技能的详细步骤时，调用 skill 工具加载它。`;
+    // 记忆文件（AGENTS.md / CLAUDE.md + @include），优先级由低到高拼接
+    const memory = loadMemoryContext(cwd);
+    const memoryBlock = memory.text ? `\n\n## 项目/用户指令（AGENTS.md）\n${memory.text}` : "";
+    const systemContent = `${SYSTEM_PROMPT}${memoryBlock}\n\n## 可用技能\n${skillsCatalog()}\n\n需要某个技能的详细步骤时，调用 skill 工具加载它。`;
     msgs.unshift({ role: "system", content: systemContent });
+    if (memory.files.length) {
+      onEvent({ type: "memory_loaded", count: memory.files.length, truncated: memory.truncated });
+    }
   }
   // 生命周期钩子（Claude Code hooks 移植）
   const { config: hookConfig, file: hookFile } = loadHooks(resolveHooksFile(cwd));

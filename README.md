@@ -10,6 +10,7 @@
 - **工具契约**：每个工具声明 `name/description/parameters/isReadOnly/execute`
 - **并发执行**：连续的只读工具并行、写工具串行（借鉴 Claude Code `toolOrchestration`），实测 3 倍提速
 - **卡住检测**：连续 3 步「无文件改动 + 工具结果重复」自动终止，避免空转烧 token（`stallLimit` 可调，0 关闭）
+- **记忆文件注入**：`AGENTS.md` / `CLAUDE.md` 分层加载（用户级 → 项目根 → 当前目录）+ `@include` 展开，超 40k 截断（移植 `claudemd`）
 - **命令级只读判定**：bash 命令经配置表 + flag 校验判定是否只读（移植 `readOnlyCommandValidation`），只读命令可参与并行
 - **文件改动历史**：写前自动备份，支持 list / diff / rewind 回滚（移植 `fileHistory`）
 - **31 个内置工具**：`bash`、`read_file`、`write_file`、`edit_file`、`glob`、`grep`、`subagent`、`skill`、`web_fetch`、`todo_write`、`git`、`memory`、`check_binary`、`apply_patch`、`file_history`、`run_tests`、`env_info`、`diff`、`ask_user`、`plan_mode`、`http_request`、`schedule`、`sleep`、`config`、`tool_search`、`notebook_edit`、`task`、`team`、`code_outline`、`mcp`、`lark_send`
@@ -215,7 +216,8 @@ npm test          # 运行全部测试（tests/run-all.mjs）
 | `file-history.test.mjs` | 21 |
 | `cli-defaults.test.mjs` | 11 |
 | `stall-detector.test.mjs` | 14 |
-| **合计** | **401** |
+| `memory-files.test.mjs` | 29 |
+| **合计** | **430** |
 
 CI：GitHub Actions（push / PR 自动跑）。
 
