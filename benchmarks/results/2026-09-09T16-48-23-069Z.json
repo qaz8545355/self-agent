@@ -1,0 +1,16 @@
+{
+  "at": "2026-09-09T16:48:23.069Z",
+  "passed": 1,
+  "total": 1,
+  "records": [
+    {
+      "case": "14-spec-cli",
+      "passed": true,
+      "detail": "4 个场景全部符合规格",
+      "steps": 5,
+      "tokens": 19694,
+      "durationMs": 163800,
+      "error": null
+    }
+  ]
+}

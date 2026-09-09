@@ -1,0 +1,16 @@
+{
+  "at": "2026-09-09T16:49:49.950Z",
+  "passed": 1,
+  "total": 1,
+  "records": [
+    {
+      "case": "15-perf-pair",
+      "passed": true,
+      "detail": "功能正确且 6 万输入在 1 秒内完成",
+      "steps": 9,
+      "tokens": 38012,
+      "durationMs": 86648,
+      "error": null
+    }
+  ]
+}
