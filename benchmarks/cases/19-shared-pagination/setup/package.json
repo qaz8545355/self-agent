@@ -1,0 +1,7 @@
+{
+  "name": "c19-shared-pagination",
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}

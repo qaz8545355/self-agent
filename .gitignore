@@ -3,3 +3,8 @@ node_modules/
 *.log
 sessions/
 .DS_Store
+
+# delegator 注入物（Claude Code 委托时生成，不入库）
+.cc-delegate/
+.claude/
+CLAUDE.md

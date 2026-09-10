@@ -1,0 +1,7 @@
+{
+  "name": "c18-decoy-root-cause",
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}
