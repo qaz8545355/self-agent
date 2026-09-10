@@ -251,7 +251,7 @@ CI：GitHub Actions（push / PR 自动跑）。
 | 维度 | Claude Code | self-agent |
 |---|---|---|
 | 语言/运行时 | TypeScript + Bun + React Ink | 纯 Node ESM |
-| 代码规模 | 51 万行 / 3806 文件 | 5557 行 / 28 模块 |
+| 代码规模 | 51 万行 / 3806 文件 | 5557 行 / 26 模块 |
 | 工具数 | 41 | 32 |
 | 上下文压缩 | 四层流水线 | 两层 |
 | 权限分类 | LLM 分类器 | 规则分类 + 审计 |
