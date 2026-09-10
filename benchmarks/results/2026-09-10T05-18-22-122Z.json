@@ -1,0 +1,16 @@
+{
+  "at": "2026-09-10T05:18:22.122Z",
+  "passed": 1,
+  "total": 1,
+  "records": [
+    {
+      "case": "08-write-script",
+      "passed": true,
+      "detail": "统计随文件变化：3 → 6",
+      "steps": 4,
+      "tokens": 28796,
+      "durationMs": 168587,
+      "error": null
+    }
+  ]
+}
