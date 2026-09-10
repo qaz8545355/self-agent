@@ -1,0 +1,16 @@
+{
+  "at": "2026-09-10T05:14:35.720Z",
+  "passed": 0,
+  "total": 1,
+  "records": [
+    {
+      "case": "08-write-script",
+      "passed": false,
+      "detail": "未创建 count.mjs",
+      "steps": null,
+      "tokens": null,
+      "durationMs": 158190,
+      "error": "模型调用失败（HTTP 500）：upstream error: do request failed (request id: 20260910051334679906021MJqcPwUZ)"
+    }
+  ]
+}
