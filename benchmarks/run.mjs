@@ -98,7 +98,11 @@ async function main() {
     process.stdout.write(`▶ ${c} … `);
     const r = await runCase(c);
     records.push(r);
-    console.log(r.passed ? `✅ 通过（${r.steps} 步 / ${r.tokens ?? "?"} tokens）` : `❌ 失败：${r.detail}`);
+    console.log(
+      r.passed
+        ? `✅ 通过（${r.steps} 步 / ${r.tokens ?? "?"} tokens）`
+        : `❌ 失败${r.error ? `【模型错误】${r.error}` : ""}：${String(r.detail).slice(0, 160)}`
+    );
   }
 
   const passed = records.filter((r) => r.passed).length;
