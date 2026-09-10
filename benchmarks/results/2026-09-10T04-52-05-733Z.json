@@ -1,0 +1,16 @@
+{
+  "at": "2026-09-10T04:52:05.734Z",
+  "passed": 0,
+  "total": 1,
+  "records": [
+    {
+      "case": "08-write-script",
+      "passed": false,
+      "detail": "未创建 count.mjs",
+      "steps": null,
+      "tokens": null,
+      "durationMs": 127892,
+      "error": "模型调用失败（HTTP 524）：openai_error"
+    }
+  ]
+}

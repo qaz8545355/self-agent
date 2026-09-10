@@ -280,6 +280,35 @@ await check(28, "命令模板", async () => {
   return { ok: all.some((x) => x.kind === "command") && loaded.content.includes("审查 src/a.js"), detail: `命令被发现并可参数化调用` };
 });
 
+// ── 29：跨机制协同（不依赖模型）────────────────────────────
+await check(29, "跨机制协同：一次写文件调用触发的完整链路", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { runTool } = await import("./tools.mjs");
+  const { createAuditLog } = await import("./permission-audit.mjs");
+  const { runHooks } = await import("./hooks.mjs");
+  const { listVersions, rewind } = await import("./file-history.mjs");
+
+  const target = path.join(cwd, "coop.txt");
+  writeFileSync(target, "old");
+
+  // ① 权限审计分类
+  const audit = createAuditLog();
+  const verdict = audit.record("write_file", { path: "coop.txt", content: "new" }, { cwd });
+  // ② PreToolUse 钩子
+  const pre = runHooks({ PreToolUse: [{ matcher: "write_file", command: "echo hook-ok" }] }, "PreToolUse", { tool_name: "write_file" }, { cwd });
+  // ③ 工具执行（内部触发路径安全 + 文件历史备份）
+  const r = await runTool("write_file", { path: "coop.txt", content: "new" }, { cwd });
+  // ④ 文件历史可回滚
+  const vs = listVersions(target, {});
+  rewind(target, vs.at(-1)?.version, {});
+  const back = readFileSync(target, "utf8");
+
+  return {
+    ok: verdict.decision === "allow" && pre.ran === 1 && String(r.text).includes("已写入") && back === "old",
+    detail: `审计=${verdict.decision}；hook 执行=${pre.ran} 次；写入成功；回滚后内容=${JSON.stringify(back)}`,
+  };
+});
+
 // ── 汇总 ──────────────────────────────────────────────────
 const ok = R.filter((r) => r.ok).length;
 console.log(`\n${"─".repeat(60)}`);
