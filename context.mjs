@@ -9,13 +9,40 @@
  */
 import { chat } from "./llm.mjs";
 
-/** 粗估 token：中英混合按 2 字符/token，外加每条消息固定开销 */
+/**
+ * 按字符类型加权估算 token（移植 Claude Code tokenEstimation 的启发式思路）。
+ *
+ * 经验值：CJK 字符 ≈ 1 token/字；拉丁字母/数字/符号 ≈ 0.28 token/字符（约 3.6 字符/token）。
+ * 旧实现统一按「2 字符/token」，会把中文低估一倍、英文高估一倍。
+ */
+export function estimateTextTokens(text) {
+  const s = String(text ?? "");
+  let cjk = 0;
+  let other = 0;
+  for (const ch of s) {
+    const c = ch.codePointAt(0);
+    if (
+      (c >= 0x2e80 && c <= 0x9fff) || // CJK 部首 / 统一表意
+      (c >= 0x3000 && c <= 0x303f) || // 中文标点
+      (c >= 0x3040 && c <= 0x30ff) || // 日文假名
+      (c >= 0xac00 && c <= 0xd7af) || // 韩文
+      (c >= 0xff00 && c <= 0xffef) // 全角字符
+    ) {
+      cjk += 1;
+    } else {
+      other += 1;
+    }
+  }
+  return Math.ceil(cjk + other * 0.28);
+}
+
+/** 估算消息数组的 token（含每条消息固定开销） */
 export function estimateTokens(messages = []) {
   let total = 0;
   for (const m of messages) {
     const c = typeof m.content === "string" ? m.content : JSON.stringify(m.content ?? "");
-    total += Math.ceil(c.length / 2) + 4;
-    if (m.tool_calls) total += Math.ceil(JSON.stringify(m.tool_calls).length / 2);
+    total += estimateTextTokens(c) + 4;
+    if (m.tool_calls) total += estimateTextTokens(JSON.stringify(m.tool_calls));
   }
   return total;
 }

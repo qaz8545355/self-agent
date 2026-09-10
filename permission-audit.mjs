@@ -64,7 +64,7 @@ export function classifyAction(toolName, args = {}, ctx = {}) {
 
   if (toolName === "bash") {
     const cmd = String(args.command ?? "");
-    const check = checkCommand(cmd);
+    const check = checkCommand(cmd, { cwd });
     if (!check.allow) {
       return { decision: DECISION.DENY, reason: check.reason, source: "execpolicy", action };
     }

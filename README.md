@@ -19,6 +19,9 @@
 - **prompt 状态诊断**：记录 system / 工具集合 / 工具 schema 哈希，变化时报告原因，用于定位前缀缓存失效与上下文抖动（移植 `promptCacheBreakDetection`）
 - **MCP 多作用域 + 审批**：用户级 `~/.self-agent/mcp.json` 与项目级 `<cwd>/.self-agent/mcp.json` 合并（项目覆盖）；**项目级 server 必须显式批准**才连接（防 clone 来的仓库自动执行命令）；工具名带 `mcp__<server>__<tool>` 命名空间
 - **权限决策审计**：每个工具调用按规则分类为 `allow / ask / deny` 并统计（移植 `yoloClassifier` 的决策思路），CLI 结束时输出审计摘要
+- **文件分页读取**：`read_file` 支持 `offset` / `limit`，长文件不会一次塞满上下文（移植 `Cursor` 的分页思路）
+- **重定向目标检查**：`echo x > /etc/passwd` 这类命令会被拦——危险的不只是命令本身，还有写入目标（移植 `bash/ast` 的路径提取思路）
+- **CJK 感知的 token 估算**：中文 ≈1 token/字、英文 ≈0.28 token/字符，替代原来笼统的「2 字符/token」
 - **命令级只读判定**：bash 命令经配置表 + flag 校验判定是否只读（移植 `readOnlyCommandValidation`），只读命令可参与并行
 - **文件改动历史**：写前自动备份，支持 list / diff / rewind 回滚（移植 `fileHistory`）
 - **32 个内置工具**：`bash`、`read_file`、`write_file`、`edit_file`、`glob`、`grep`、`subagent`、`skill`、`web_fetch`、`todo_write`、`git`、`memory`、`check_binary`、`apply_patch`、`file_history`、`bg_task`、`run_tests`、`env_info`、`diff`、`ask_user`、`plan_mode`、`http_request`、`schedule`、`sleep`、`config`、`tool_search`、`notebook_edit`、`task`、`team`、`code_outline`、`mcp`、`lark_send`
@@ -232,7 +235,10 @@ npm test          # 运行全部测试（tests/run-all.mjs）
 | `prompt-state.test.mjs` | 20 |
 | `mcp-scopes.test.mjs` | 32 |
 | `permission-audit.test.mjs` | 29 |
-| **合计** | **655** |
+| `token-estimation.test.mjs` | 15 |
+| `redirect-guard.test.mjs` | 22 |
+| `file-paging.test.mjs` | 14 |
+| **合计** | **706** |
 
 CI：GitHub Actions（push / PR 自动跑）。
 

@@ -10,7 +10,7 @@ t("token 估算随内容增长", estimateTokens(m2) > estimateTokens(m1));
 t("空数组为 0", estimateTokens([]) === 0);
 
 // 2) 阈值判断
-const big = [{ role: "user", content: "x".repeat(100_000) }];
+const big = [{ role: "user", content: "x".repeat(200_000) }];
 t("大上下文触发压缩", shouldCompact(big, { contextWindow: 100_000, thresholdRatio: 0.5 }));
 t("小上下文不触发", !shouldCompact(m1, { contextWindow: 1_000_000, thresholdRatio: 0.65 }));
 

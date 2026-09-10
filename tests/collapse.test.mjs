@@ -50,7 +50,7 @@ t("小上下文不压缩", rs.compacted === false && rs.level === null);
 
 // 7) 分层：无工具结果 + 助手长回复 → 应在 L2 停下
 const l2case = [{ role: "system", content: "s" }];
-for (let i = 0; i < 10; i++) l2case.push({ role: "assistant", content: "x".repeat(2000) });
+for (let i = 0; i < 15; i++) l2case.push({ role: "assistant", content: "x".repeat(2000) });
 const rl2 = await compactIfNeeded(l2case, {
   contextWindow: 20_000,
   thresholdRatio: 0.3,
@@ -63,7 +63,7 @@ t("L2 折叠即可解决时停在 L2", rl2.level === "L2", `→ level=${rl2.leve
 const l1case = [{ role: "system", content: "s" }];
 for (let i = 0; i < 30; i++) {
   l1case.push({ role: "assistant", content: "", tool_calls: [{ id: `c${i}`, type: "function", function: { name: "bash", arguments: "{}" } }] });
-  l1case.push({ role: "tool", tool_call_id: `c${i}`, content: "y".repeat(400) });
+  l1case.push({ role: "tool", tool_call_id: `c${i}`, content: "y".repeat(800) });
 }
 const rl1 = await compactIfNeeded(l1case, {
   contextWindow: 20_000,

@@ -73,7 +73,7 @@ export const toolDefs = [
     },
     isReadOnly: false,
     async execute({ command, run_in_background }, ctx = {}) {
-      const check = checkCommand(command);
+      const check = checkCommand(command, { cwd: ctx.cwd ?? process.cwd() });
       if (!check.allow) return { isError: true, text: `⛔ 已拦截（${check.level}）：${check.reason}` };
 
       // 统一走后台任务运行时：前台等待最多 FOREGROUND_MS，超时自动转后台
@@ -102,18 +102,40 @@ export const toolDefs = [
   },
   {
     name: "read_file",
-    description: "读取文件内容（带行号）。",
+    description: "读取文件内容（带行号）。大文件可用 offset/limit 分页读取，避免一次塞满上下文。",
     parameters: {
       type: "object",
-      properties: { path: { type: "string" } },
+      properties: {
+        path: { type: "string" },
+        offset: { type: "number", description: "起始行号（1 起，默认 1）" },
+        limit: { type: "number", description: "最多读取行数（默认 2000，上限 5000）" },
+      },
       required: ["path"],
     },
     isReadOnly: true,
-    async execute({ path: p }, ctx = {}) {
+    async execute({ path: p, offset, limit }, ctx = {}) {
       const full = path.resolve(ctx.cwd ?? process.cwd(), p);
       if (!existsSync(full)) return { isError: true, text: `文件不存在：${p}` };
-      const lines = readFileSync(full, "utf8").split("\n");
-      return { text: truncate(lines.map((l, i) => `${i + 1}\t${l}`).join("\n")) };
+      let stat;
+      try {
+        stat = statSync(full);
+      } catch (e) {
+        return { isError: true, text: `无法读取：${e.message}` };
+      }
+      if (stat.isDirectory()) return { isError: true, text: `这是目录，不是文件：${p}` };
+
+      const all = readFileSync(full, "utf8").split("\n");
+      const total = all.length;
+      const start = Math.max(1, Math.floor(Number(offset) || 1));
+      const count = Math.max(1, Math.min(Math.floor(Number(limit) || 2000), 5000));
+      const slice = all.slice(start - 1, start - 1 + count);
+      if (!slice.length) return { text: `（offset=${start} 超出文件范围，共 ${total} 行）` };
+
+      const body = slice.map((l, i) => `${start + i}\t${l}`).join("\n");
+      const shownEnd = start + slice.length - 1;
+      const more =
+        shownEnd < total ? `\n…（共 ${total} 行，已显示 ${start}-${shownEnd}；继续读用 offset=${shownEnd + 1}）` : "";
+      return { text: truncate(body + more) };
     },
   },
   {

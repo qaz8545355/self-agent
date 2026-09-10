@@ -26,10 +26,34 @@ function stripHeredocs(cmd) {
 }
 
 /**
+ * 提取命令里的重定向目标路径（`>`、`>>`、`2>`、`&>` 等），跳过 /dev/null 与 fd 复制。
+ * 动机：`echo x > /etc/passwd` 这类命令本身不匹配危险策略，但**目标路径**是危险的。
+ */
+export function extractRedirectTargets(command) {
+  const out = [];
+  const src = stripHeredocs(String(command ?? ""));
+  const re = /(?:\d?&?>>?|&>)\s*("[^"]*"|'[^']*'|[^\s;&|<>]+)/g;
+  for (const m of src.matchAll(re)) {
+    let target = m[1] ?? "";
+    if ((target.startsWith('"') && target.endsWith('"')) || (target.startsWith("'") && target.endsWith("'"))) {
+      target = target.slice(1, -1);
+    }
+    if (!target) continue;
+    if (target === "/dev/null" || target === "/dev/stderr" || target === "/dev/stdout") continue;
+    if (/^&\d+$/.test(target)) continue; // fd 复制，如 2>&1
+    out.push(target);
+  }
+  return out;
+}
+
+/**
  * 检查 bash 命令。
+ * @param {string} command
+ * @param {{cwd?:string}} [options] cwd 用于解析重定向目标的相对路径
  * @returns {{allow: boolean, reason?: string, level?: string}}
  */
-export function checkCommand(command) {
+export function checkCommand(command, options = {}) {
+  const cwd = options.cwd ?? process.cwd();
   const cmd = stripHeredocs(String(command ?? ""));
   const pathCheck = checkCommandPaths(cmd);
   if (pathCheck.dangerous) {
@@ -38,6 +62,14 @@ export function checkCommand(command) {
       level: "deny",
       reason: `路径安全：${pathCheck.hits.map((h) => `${h.path}（${h.reason}）`).join("；")}`,
     };
+  }
+  // 重定向目标：写入系统目录同样拦截
+  for (const target of extractRedirectTargets(cmd)) {
+    const abs = path.isAbsolute(target) ? target : path.resolve(cwd, target);
+    const w = checkWritePath(abs);
+    if (!w.allow) {
+      return { allow: false, level: "deny", reason: `重定向目标不可写：${w.reason}（${abs}）` };
+    }
   }
   for (const rule of rules) {
     if (!rule.re.test(cmd)) continue;
