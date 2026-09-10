@@ -251,10 +251,17 @@ CI：GitHub Actions（push / PR 自动跑）。
 | 维度 | Claude Code | self-agent |
 |---|---|---|
 | 语言/运行时 | TypeScript + Bun + React Ink | 纯 Node ESM |
-| 工具数 | 41 | 30 |
+| 代码规模 | 51 万行 / 3806 文件 | 5557 行 / 28 模块 |
+| 工具数 | 41 | 32 |
 | 上下文压缩 | 四层流水线 | 两层 |
+| 权限分类 | LLM 分类器 | 规则分类 + 审计 |
+| bash 解析 | 完整 AST（7100 行） | 路径提取 + 配置表校验 |
 | UI | 终端 React | 文本流 |
 | 依赖 | 大量 | 仅 yaml |
+| 测试 | — | 752 用例 / 41 文件 |
+
+> 借鉴关系与取舍理由见 [`docs/learning-notes-claude-code.md`](docs/learning-notes-claude-code.md)：
+> 11 轮源码学习、28 项机制移植、10 项机制的主动放弃理由。
 
 ## 许可证
 
