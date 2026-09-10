@@ -22,6 +22,8 @@
 - **文件分页读取**：`read_file` 支持 `offset` / `limit`，长文件不会一次塞满上下文（移植 `Cursor` 的分页思路）
 - **重定向目标检查**：`echo x > /etc/passwd` 这类命令会被拦——危险的不只是命令本身，还有写入目标（移植 `bash/ast` 的路径提取思路）
 - **CJK 感知的 token 估算**：中文 ≈1 token/字、英文 ≈0.28 token/字符，替代原来笼统的「2 字符/token」
+- **11 个生命周期钩子事件**：SessionStart / SessionEnd / UserPromptSubmit / PreToolUse / PostToolUse / PostToolUseFailure / PreCompact / PostCompact / SubagentStart / SubagentStop / Stop；不同事件按不同字段匹配 matcher（工具名 / source / trigger / agent）
+- **命令模板**：`~/.self-agent/commands/*.md` 定义参数化任务模板（`$ARGUMENTS` / `$1`），与技能共用清单与加载入口，清单里标 `[命令]`
 - **命令级只读判定**：bash 命令经配置表 + flag 校验判定是否只读（移植 `readOnlyCommandValidation`），只读命令可参与并行
 - **文件改动历史**：写前自动备份，支持 list / diff / rewind 回滚（移植 `fileHistory`）
 - **32 个内置工具**：`bash`、`read_file`、`write_file`、`edit_file`、`glob`、`grep`、`subagent`、`skill`、`web_fetch`、`todo_write`、`git`、`memory`、`check_binary`、`apply_patch`、`file_history`、`bg_task`、`run_tests`、`env_info`、`diff`、`ask_user`、`plan_mode`、`http_request`、`schedule`、`sleep`、`config`、`tool_search`、`notebook_edit`、`task`、`team`、`code_outline`、`mcp`、`lark_send`
@@ -238,7 +240,9 @@ npm test          # 运行全部测试（tests/run-all.mjs）
 | `token-estimation.test.mjs` | 15 |
 | `redirect-guard.test.mjs` | 22 |
 | `file-paging.test.mjs` | 14 |
-| **合计** | **706** |
+| `hook-events.test.mjs` | 29 |
+| `commands.test.mjs` | 17 |
+| **合计** | **752** |
 
 CI：GitHub Actions（push / PR 自动跑）。
 

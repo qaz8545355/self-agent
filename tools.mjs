@@ -262,6 +262,16 @@ export const toolDefs = [
         if (wt.created) workDir = wt.dir;
       }
 
+      // 子代理生命周期钩子（对齐源码 SubagentStart / SubagentStop）
+      const { loadHooks, resolveHooksFile, runHooks } = await import("./hooks.mjs");
+      const { config: subHooks } = loadHooks(resolveHooksFile(ctx.cwd));
+      runHooks(
+        subHooks,
+        "SubagentStart",
+        { agent: "subagent", task: String(task ?? "").slice(0, 300), cwd: ctx.cwd },
+        { cwd: ctx.cwd }
+      );
+
       try {
         const r = await runAgent({
           task,
@@ -293,6 +303,8 @@ export const toolDefs = [
           removeWorktree(wt);
         }
         return { isError: true, text: `子代理失败：${e.message}` };
+      } finally {
+        runHooks(subHooks, "SubagentStop", { agent: "subagent", cwd: ctx.cwd }, { cwd: ctx.cwd });
       }
     },
   },

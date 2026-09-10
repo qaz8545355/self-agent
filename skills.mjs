@@ -22,6 +22,15 @@ export const SKILL_DIRS = process.env.SELF_AGENT_SKILL_DIRS
       path.join(os.homedir(), "dsh", ".agents", "skills"),
     ];
 
+/**
+ * 命令模板目录（对齐源码 commands/ 的「斜杠命令」定位）：
+ * 用户预定义的任务模板，支持 `$ARGUMENTS` / `$1` 参数化调用。
+ * 与 skill 的区别：命令是「一句话任务模板」，skill 是「能力包 + 详细步骤」。
+ */
+export const COMMAND_DIRS = process.env.SELF_AGENT_COMMAND_DIRS
+  ? process.env.SELF_AGENT_COMMAND_DIRS.split(path.delimiter)
+  : [path.join(os.homedir(), ".self-agent", "commands")];
+
 export function parseFrontmatter(txt) {
   const m = txt.match(/^---\n([\s\S]*?)\n---\n?/);
   if (!m) return { fm: {}, body: txt };
@@ -157,10 +166,12 @@ export function substituteArguments(content, args, options = {}) {
   return content;
 }
 
-function metaFrom(fm, dir, entryName, source) {
+function metaFrom(fm, dir, entryName, source, kind = "skill", file = null) {
   return {
     name: String(fm.name ?? entryName),
+    kind,
     dir,
+    file: file ?? path.join(dir, "SKILL.md"),
     source,
     description: String(fm.description ?? "").replace(/\s+/g, " ").trim(),
     whenToUse: fm.when_to_use ? String(fm.when_to_use) : undefined,
@@ -173,11 +184,15 @@ function metaFrom(fm, dir, entryName, source) {
 }
 
 /**
- * 列出所有技能。
- * @returns {Array<object>} 含 name/dir/description/source/arguments/argumentHint/paths 等
+ * 列出所有技能与命令模板。
+ * @param {string[]} dirs 技能目录（每个子目录的 SKILL.md）
+ * @param {{commandDirs?: string[]}} [options] 命令目录（每个 `<name>.md` 文件）
+ * @returns {Array<object>} 含 name/kind/dir/description/source/arguments/argumentHint/paths 等
  */
-export function listSkills(dirs = SKILL_DIRS) {
+export function listSkills(dirs = SKILL_DIRS, options = {}) {
   const out = [];
+
+  // 技能：<dir>/<name>/SKILL.md
   for (const dir of dirs) {
     if (!existsSync(dir)) continue;
     let entries;
@@ -192,12 +207,34 @@ export function listSkills(dirs = SKILL_DIRS) {
       if (!existsSync(file)) continue;
       try {
         const { fm } = parseFrontmatter(readFileSync(file, "utf8"));
-        out.push(metaFrom(fm, path.join(dir, e.name), e.name, dir));
+        out.push(metaFrom(fm, path.join(dir, e.name), e.name, dir, "skill"));
       } catch {
         /* 跳过损坏技能 */
       }
     }
   }
+
+  // 命令模板：<dir>/<name>.md
+  for (const dir of options.commandDirs ?? COMMAND_DIRS) {
+    if (!existsSync(dir)) continue;
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const e of entries) {
+      if (!e.isFile() || !e.name.endsWith(".md")) continue;
+      const file = path.join(dir, e.name);
+      try {
+        const { fm } = parseFrontmatter(readFileSync(file, "utf8"));
+        out.push(metaFrom(fm, dir, e.name.replace(/\.md$/, ""), dir, "command", file));
+      } catch {
+        /* 跳过损坏命令 */
+      }
+    }
+  }
+
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -208,11 +245,11 @@ export function listSkills(dirs = SKILL_DIRS) {
  */
 export function loadSkill(name, options = {}) {
   const { dirs = SKILL_DIRS, args } = Array.isArray(options) ? { dirs: options } : options;
-  const all = listSkills(dirs);
+  const all = listSkills(dirs, options);
   const s = all.find((x) => x.name === name || path.basename(x.dir) === name);
   if (!s) return null;
   try {
-    const raw = readFileSync(path.join(s.dir, "SKILL.md"), "utf8");
+    const raw = readFileSync(s.file, "utf8");
     const { body } = parseFrontmatter(raw);
     const content = args === undefined ? body : substituteArguments(body, args, { argumentNames: s.arguments });
     return { ...s, content, raw };
@@ -222,13 +259,14 @@ export function loadSkill(name, options = {}) {
 }
 
 /** 生成技能清单文本（用于 system prompt 注入，限制长度避免占用过多上下文） */
-export function skillsCatalog(dirs = SKILL_DIRS, limit = 40) {
-  const all = listSkills(dirs);
+export function skillsCatalog(dirs = SKILL_DIRS, limit = 40, options = {}) {
+  const all = listSkills(dirs, options);
   if (!all.length) return "(无可用技能)";
   const lines = all.slice(0, limit).map((s) => {
     const hint = s.argumentHint ? ` ${s.argumentHint}` : "";
     const cond = s.paths.length ? ` [条件技能：${s.paths.join(", ")}]` : "";
-    return `- ${s.name}${hint}: ${s.description.slice(0, 80)}${cond}`;
+    const kind = s.kind === "command" ? "[命令] " : "";
+    return `- ${kind}${s.name}${hint}: ${s.description.slice(0, 80)}${cond}`;
   });
   if (all.length > limit) lines.push(`…（共 ${all.length} 个技能，可用 skill 工具查看全部）`);
   return lines.join("\n");

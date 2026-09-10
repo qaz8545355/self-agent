@@ -68,6 +68,20 @@ export async function runAgent({
     onEvent({ type: "hooks_loaded", file: hookFile, events: Object.keys(hookConfig) });
   }
 
+  // SessionStart hook（源码 types/hooks.ts 的同名事件）
+  const sessionStart = runHooks(hookConfig, "SessionStart", { source: "startup", cwd }, { cwd });
+  if (sessionStart.outputs.length) {
+    msgs.push({ role: "user", content: `[SessionStart hook] ${sessionStart.outputs.join("；")}` });
+  }
+  /** 会话结束钩子（各返回点统一调用） */
+  const endSession = (reason) => {
+    try {
+      runHooks(hookConfig, "SessionEnd", { reason, steps, cwd }, { cwd });
+    } catch {
+      /* hook 失败不影响返回 */
+    }
+  };
+
   if (task) {
     const pre = runHooks(hookConfig, "UserPromptSubmit", { prompt: task, cwd }, { cwd });
     const injected = pre.outputs.length ? `\n\n[UserPromptSubmit hook 注入]\n${pre.outputs.join("\n")}` : "";
@@ -120,8 +134,20 @@ export async function runAgent({
     }
 
     // 上下文压缩（仅超阈值时触发，先裁剪旧工具结果，再整体摘要）
+    const preCompact = runHooks(hookConfig, "PreCompact", { trigger: "auto", messageCount: msgs.length, cwd }, { cwd });
     const compacted = await compactIfNeeded(msgs, { contextWindow, thresholdRatio, model, onEvent });
-    if (compacted.compacted) msgs = compacted.messages;
+    if (compacted.compacted) {
+      msgs = compacted.messages;
+      runHooks(
+        hookConfig,
+        "PostCompact",
+        { trigger: "auto", level: compacted.level ?? "unknown", messageCount: msgs.length, cwd },
+        { cwd }
+      );
+    }
+    if (preCompact.outputs.length) {
+      msgs.push({ role: "user", content: `[PreCompact hook] ${preCompact.outputs.join("；")}` });
+    }
 
     // prompt 状态诊断：system / 工具集合 / 模型 / 工具 schema 变化会影响前缀缓存
     const stateDiff = promptTracker.observe({
@@ -165,6 +191,8 @@ export async function runAgent({
         steps -= 1;
         continue;
       }
+      // 模型调用失败退出：也要触发 SessionEnd（异常路径同样收尾）
+      endSession("error");
       throw e;
     }
     totalTokens += resp.usage?.total_tokens ?? 0;
@@ -184,6 +212,7 @@ export async function runAgent({
         });
         continue;
       }
+      endSession("completed");
       return { content: resp.content, messages: msgs, steps, totalTokens, done: true, audit: audit.summary() };
     }
 
@@ -240,6 +269,23 @@ export async function runAgent({
         if (preHook.outputs.length) {
           result = { ...result, text: `[PreToolUse hook] ${preHook.outputs.join("；")}\n${result.text}` };
         }
+        // 工具失败专用钩子（对齐源码 PostToolUseFailure）
+        if (result.isError) {
+          const failHook = runHooks(
+            hookConfig,
+            "PostToolUseFailure",
+            {
+              tool_name: tc.function?.name,
+              tool_input: args,
+              error: String(result.text ?? "").slice(0, 2000),
+              cwd,
+            },
+            { cwd }
+          );
+          if (failHook.outputs.length) {
+            result = { ...result, text: `${result.text}\n[PostToolUseFailure hook] ${failHook.outputs.join("；")}` };
+          }
+        }
       }
       onEvent({ type: "tool_result", name: tc.function?.name, isError: !!result.isError, text: result.text });
       return result;
@@ -291,6 +337,7 @@ export async function runAgent({
     const stall = stallDetector.observe(calls, toolResults);
     if (stall.stalled) {
       onEvent({ type: "stalled", streak: stall.streak });
+      endSession("stalled");
       return {
         content: `（连续 ${stall.streak} 步无进展：没有文件改动，且工具调用与结果重复，已提前终止）`,
         messages: msgs,
@@ -303,6 +350,7 @@ export async function runAgent({
     }
   }
 
+  endSession("max_steps");
   return {
     content: `（达到步数上限 ${maxSteps}，已停止）`,
     messages: msgs,

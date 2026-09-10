@@ -1,20 +1,19 @@
 /**
  * hooks.mjs — 生命周期钩子（移植 Claude Code hooks 设计）
  *
- * 事件：PreToolUse / PostToolUse / UserPromptSubmit / Stop
+ * 事件（扩展自源码 types/hooks.ts 的 hookEventName 字面量）：
+ *   SessionStart / SessionEnd / UserPromptSubmit / PreToolUse / PostToolUse /
+ *   PostToolUseFailure / PreCompact / PostCompact / SubagentStart / SubagentStop / Stop
+ *
  * 配置：项目或用户目录下的 hooks.json
- *   {
- *     "PreToolUse": [{ "matcher": "bash", "command": "..." }],
- *     "PostToolUse": [...],
- *     "UserPromptSubmit": [...],
- *     "Stop": [...]
- *   }
+ *   { "PreToolUse": [{ "matcher": "bash", "command": "..." }], ... }
  *
  * 契约（与 Claude Code 一致）：
  *   - 命令通过 stdin 收到 JSON payload
  *   - 退出码 0：继续；stdout 作为附加信息注入
  *   - 退出码 2：阻止（blocked）；stdout 作为阻止原因
  *   - 其他退出码：视为 hook 失败，记录但不阻断
+ *   - JSON 输出优先：{ decision, reason, additionalContext, systemMessage }
  */
 import { readFileSync, existsSync, mkdirSync, appendFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
@@ -22,7 +21,37 @@ import os from "node:os";
 import path from "node:path";
 import { checkCommand } from "./safety.mjs";
 
-export const HOOK_EVENTS = ["PreToolUse", "PostToolUse", "UserPromptSubmit", "Stop"];
+export const HOOK_EVENTS = [
+  "SessionStart",
+  "SessionEnd",
+  "UserPromptSubmit",
+  "PreToolUse",
+  "PostToolUse",
+  "PostToolUseFailure",
+  "PreCompact",
+  "PostCompact",
+  "SubagentStart",
+  "SubagentStop",
+  "Stop",
+];
+
+/**
+ * 各事件用于 matcher 匹配的 payload 字段（对齐源码：不同事件匹配不同维度）。
+ * null 表示该事件不支持 matcher（配置了 matcher 的 hook 不执行）。
+ */
+export const MATCHER_FIELDS = {
+  PreToolUse: "tool_name",
+  PostToolUse: "tool_name",
+  PostToolUseFailure: "tool_name",
+  SessionStart: "source",
+  SessionEnd: "reason",
+  PreCompact: "trigger",
+  PostCompact: "trigger",
+  SubagentStart: "agent",
+  SubagentStop: "agent",
+  UserPromptSubmit: null,
+  Stop: null,
+};
 
 const ERROR_LOG = process.env.SELF_AGENT_HOOK_LOG ?? path.join(os.homedir(), ".self-agent", "hook-errors.log");
 
@@ -69,15 +98,24 @@ export function loadHooks(file) {
   }
 }
 
-/** 过滤出匹配该事件（及工具名）的 hook */
-export function matchHooks(config, event, toolName) {
+/**
+ * 过滤出匹配该事件（及 matcher 维度）的 hook。
+ * @param {object} config hooks.json 内容
+ * @param {string} event 事件名
+ * @param {object|string} payload 该事件的 payload（也兼容直接传 matcher 值）
+ */
+export function matchHooks(config, event, payload) {
   const list = Array.isArray(config?.[event]) ? config[event] : [];
+  const field = MATCHER_FIELDS[event] ?? "tool_name";
+  const value =
+    typeof payload === "string" ? payload : field && payload && typeof payload === "object" ? payload[field] : undefined;
+
   return list.filter((h) => {
     if (!h || typeof h.command !== "string" || !h.command.trim()) return false;
     if (!h.matcher) return true;
-    if (!toolName) return false;
+    if (!value) return false;
     try {
-      return new RegExp(h.matcher).test(toolName);
+      return new RegExp(h.matcher).test(String(value));
     } catch {
       return false;
     }
@@ -89,7 +127,7 @@ export function matchHooks(config, event, toolName) {
  * @returns {{blocked: boolean, outputs: string[], errors: string[], ran: number}}
  */
 export function runHooks(config, event, payload, { cwd = process.cwd(), timeout = 15_000 } = {}) {
-  const hooks = matchHooks(config, event, payload?.tool_name);
+  const hooks = matchHooks(config, event, payload);
   const outputs = [];
   const errors = [];
   let blocked = false;
